@@ -12,8 +12,9 @@
   },
   "files": ["dist"],
   "scripts": {
+    "pretest": "pnpm --filter @qzd/shared build && pnpm --filter @qzd/ledger build",
     "build": "tsup src/index.ts --dts --format esm --out-dir dist --clean",
-    "test": "vitest run",
+    "test": "pnpm run pretest && vitest run",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },
@@ -22,6 +23,8 @@
     "@qzd/shared": "workspace:*"
   },
   "devDependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.6.0",
     "@types/node": "^20.11.0",
     "typescript": "^5.3.3",
     "vitest": "^1.3.1"
