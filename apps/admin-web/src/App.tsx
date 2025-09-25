@@ -21,7 +21,7 @@ export default function App() {
       amount: 1,
       asset: 'QZD',
       to_account: account.id,
-      memo: 'System boot',
+      memo: 'system-start',
     });
     return ledger.getHistory();
   }, []);
@@ -31,7 +31,7 @@ export default function App() {
       <h1>Admin Console</h1>
       <ul>
         {entries.map((entry) => (
-          <li key={entry.tx_hash}>{`${entry.type} ${entry.amount} ${entry.asset}`}</li>
+          <li key={entry.tx_hash}>{`${entry.type} ${entry.amount} ${entry.asset} ${entry.memo ?? ''}`}</li>
         ))}
       </ul>
     </main>
