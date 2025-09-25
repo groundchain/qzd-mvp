@@ -1,0 +1,919 @@
+openapi: 3.1.0
+info:
+  title: QZD Platform API
+  version: 0.1.0
+  description: |
+    The QZD Platform API exposes authentication, account, ledger, remittance, and
+    validator administration capabilities for wallet operators and platform
+    integrations. The contract is defined up-front to enable client/server
+    scaffolding via OpenAPI Generator.
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://api.qzd.local
+    description: Staging/production placeholder
+tags:
+  - name: Auth
+    description: Phone + OTP based authentication flows.
+  - name: Accounts
+    description: Account lifecycle management and balance inquiries.
+  - name: Ledger
+    description: Token mint, transfer, and redemption flows.
+  - name: Remittance
+    description: Cross-border remittance acquisition simulators.
+  - name: Validators
+    description: Validator registry and admin signature helpers.
+  - name: Health
+    description: Platform health probes.
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Begin a new wallet registration
+      operationId: registerAuth
+      description: |
+        Initiates a wallet registration using either a phone number or DPI
+        (Documento Personal de Identificación). OTP handling is mocked for
+        sandbox environments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              phone:
+                summary: Register with a phone number
+                value:
+                  channel: phone
+                  phoneNumber: '+50255551234'
+                  otpCode: '123456'
+              dpi:
+                summary: Register with a DPI identifier
+                value:
+                  channel: dpi
+                  dpi: '1234567890101'
+                  otpCode: '654321'
+      responses:
+        '202':
+          description: Registration challenge accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterAcceptedResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Registration already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Obtain an access token
+      operationId: loginAuth
+      description: Authenticate an existing wallet using OTP challenges.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              login:
+                value:
+                  identifier: '+50255551234'
+                  otpCode: '123456'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /accounts:
+    post:
+      tags: [Accounts]
+      summary: Create a new account
+      operationId: createAccount
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Account already exists for owner/currency
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /accounts/{accountId}/balance:
+    get:
+      tags: [Accounts]
+      summary: Fetch the latest account balance
+      operationId: getAccountBalance
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Current balance snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /accounts/{accountId}/history:
+    get:
+      tags: [Accounts]
+      summary: Retrieve paginated ledger activity for an account
+      operationId: getAccountHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Ledger entries ordered newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tx/transfer:
+    post:
+      tags: [Ledger]
+      summary: Transfer QZD between accounts
+      operationId: transferLedger
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '202':
+          description: Transfer accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerSubmissionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Transfer cannot be applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /tx/issue:
+    post:
+      tags: [Ledger]
+      summary: Mint new QZD via admin multi-sig
+      operationId: issueLedger
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueRequest'
+      responses:
+        '202':
+          description: Issuance proposal accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerSubmissionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /tx/redeem:
+    post:
+      tags: [Ledger]
+      summary: Redeem QZD back to fiat
+      operationId: redeemLedger
+      security:
+        - BankAgentAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemRequest'
+      responses:
+        '202':
+          description: Redemption queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerSubmissionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /remit/us/acquire-qzd:
+    post:
+      tags: [Remittance]
+      summary: Acquire QZD using USD deposits
+      operationId: remitAcquireQzd
+      security:
+        - BankAgentAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcquireRemittanceRequest'
+      responses:
+        '202':
+          description: Remittance request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemittanceAcceptedResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /validators:
+    get:
+      tags: [Validators]
+      summary: List registered validators
+      operationId: listValidators
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Validators ordered newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidatorsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /validators/sign:
+    post:
+      tags: [Validators]
+      summary: Generate an admin validator signature
+      operationId: signValidator
+      security:
+        - AdminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignValidatorRequest'
+      responses:
+        '200':
+          description: Signature produced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignValidatorResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Service is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Service is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Wallet bearer token issued after login.
+    AdminAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Elevated bearer token with platform admin privileges.
+    BankAgentAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token restricted to bank or cash-out agents.
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      description: Unique identifier of the account.
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Continuation token for pagination.
+      schema:
+        type: string
+    PageSize:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return (defaults to 50).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+  responses:
+    ValidationError:
+      description: Request payload validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication credentials are missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated user is not permitted to perform the operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          description: Seconds until the next allowed request
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource could not be located
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine readable error code
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human readable explanation of the error
+          example: Phone number is required when channel is phone.
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Optional validation metadata for debugging.
+    RegisterRequest:
+      type: object
+      required: [channel, otpCode]
+      properties:
+        channel:
+          type: string
+          enum: [phone, dpi]
+          description: Registration vector being used.
+        phoneNumber:
+          type: string
+          description: E.164 formatted phone number required when channel is phone.
+        dpi:
+          type: string
+          description: DPI identifier required when channel is dpi.
+        otpCode:
+          type: string
+          description: Mock OTP for sandbox environments.
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional additional KYC metadata.
+      allOf:
+        - if:
+            properties:
+              channel:
+                const: phone
+          then:
+            required: [phoneNumber]
+        - if:
+            properties:
+              channel:
+                const: dpi
+          then:
+            required: [dpi]
+    RegisterAcceptedResponse:
+      type: object
+      required: [registrationId, expiresAt]
+      properties:
+        registrationId:
+          type: string
+          format: uuid
+          description: Identifier to poll or confirm the registration flow.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp for the registration challenge.
+    LoginRequest:
+      type: object
+      required: [identifier, otpCode]
+      properties:
+        identifier:
+          type: string
+          description: Phone number or DPI associated with the wallet.
+        otpCode:
+          type: string
+          description: Mock OTP for sandbox environments.
+    LoginResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: JWT granting access to protected routes.
+        refreshToken:
+          type: string
+          description: Long lived token for session refreshes.
+        expiresIn:
+          type: integer
+          description: Access token TTL in seconds.
+          example: 3600
+    Account:
+      type: object
+      required: [id, ownerId, currency, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          example: QZD
+        status:
+          type: string
+          enum: [active, suspended, closed]
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateAccountRequest:
+      type: object
+      required: [ownerId]
+      properties:
+        ownerId:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          default: QZD
+          description: ISO 4217 currency code for the account.
+        tags:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    AccountBalance:
+      type: object
+      required: [accountId, balance, currency, asOf]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        balance:
+          type: string
+          format: decimal
+          description: Numeric balance with arbitrary precision.
+          example: '1234.56'
+        currency:
+          type: string
+          example: QZD
+        available:
+          type: string
+          format: decimal
+          description: Available balance after holds.
+        holds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Hold'
+        asOf:
+          type: string
+          format: date-time
+    Hold:
+      type: object
+      required: [id, amount, memo]
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+        memo:
+          type: string
+        releaseAt:
+          type: string
+          format: date-time
+          nullable: true
+    LedgerHistoryResponse:
+      type: object
+      required: [accountId, items]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerEntry'
+        nextCursor:
+          type: string
+          nullable: true
+    LedgerEntry:
+      type: object
+      required: [id, type, amount, currency, direction, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [transfer, issuance, redemption, remittance]
+        amount:
+          type: string
+          format: decimal
+        currency:
+          type: string
+          example: QZD
+        direction:
+          type: string
+          enum: [credit, debit]
+        counterpartyAccountId:
+          type: string
+          format: uuid
+          nullable: true
+        memo:
+          type: string
+        reference:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    TransferRequest:
+      type: object
+      required: [fromAccountId, toAccountId, amount]
+      properties:
+        fromAccountId:
+          type: string
+          format: uuid
+        toAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+        memo:
+          type: string
+          maxLength: 256
+        idempotencyKey:
+          type: string
+          description: Optional client supplied key for deduplication.
+    LedgerSubmissionResponse:
+      type: object
+      required: [submissionId, status]
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, pending, rejected]
+        reason:
+          type: string
+          nullable: true
+        estimatedCompletion:
+          type: string
+          format: date-time
+          nullable: true
+    IssueRequest:
+      type: object
+      required: [mintToAccountId, amount, approvals]
+      properties:
+        mintToAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+        memo:
+          type: string
+        approvals:
+          type: array
+          minItems: 2
+          description: Multi-sig approval payloads from authorized admins.
+          items:
+            $ref: '#/components/schemas/AdminApproval'
+    AdminApproval:
+      type: object
+      required: [adminId, signature]
+      properties:
+        adminId:
+          type: string
+          format: uuid
+        signature:
+          type: string
+          description: Signature over the issuance payload.
+        signedAt:
+          type: string
+          format: date-time
+    RedeemRequest:
+      type: object
+      required: [fromAccountId, amount]
+      properties:
+        fromAccountId:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          format: decimal
+        destination:
+          $ref: '#/components/schemas/RedemptionDestination'
+        memo:
+          type: string
+    RedemptionDestination:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [bank_transfer, cash_pickup]
+        bankAccount:
+          $ref: '#/components/schemas/BankAccount'
+        cashAgentCode:
+          type: string
+          description: Identifier for the cash pickup agent.
+      allOf:
+        - if:
+            properties:
+              type:
+                const: bank_transfer
+          then:
+            required: [bankAccount]
+        - if:
+            properties:
+              type:
+                const: cash_pickup
+          then:
+            required: [cashAgentCode]
+    BankAccount:
+      type: object
+      required: [routingNumber, accountNumber]
+      properties:
+        routingNumber:
+          type: string
+        accountNumber:
+          type: string
+        holderName:
+          type: string
+        bankName:
+          type: string
+    AcquireRemittanceRequest:
+      type: object
+      required: [usdAmount, beneficiaryAccountId]
+      properties:
+        usdAmount:
+          type: string
+          format: decimal
+        beneficiaryAccountId:
+          type: string
+          format: uuid
+        senderName:
+          type: string
+        senderCountry:
+          type: string
+          example: US
+        fxRate:
+          type: string
+          format: decimal
+          description: Applied FX rate from USD to QZD.
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    RemittanceAcceptedResponse:
+      type: object
+      required: [remittanceId, quote]
+      properties:
+        remittanceId:
+          type: string
+          format: uuid
+        quote:
+          $ref: '#/components/schemas/RemittanceQuote'
+        status:
+          type: string
+          enum: [pending_funding, in_progress, completed]
+        estimatedSettlement:
+          type: string
+          format: date-time
+          nullable: true
+    RemittanceQuote:
+      type: object
+      required: [usdAmount, qzdAmount, fxRate]
+      properties:
+        usdAmount:
+          type: string
+          format: decimal
+        qzdAmount:
+          type: string
+          format: decimal
+        fxRate:
+          type: string
+          format: decimal
+        fees:
+          type: string
+          format: decimal
+          description: Fees charged in USD.
+    ValidatorsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Validator'
+        nextCursor:
+          type: string
+          nullable: true
+    Validator:
+      type: object
+      required: [id, name, publicKey, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        publicKey:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, revoked]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    SignValidatorRequest:
+      type: object
+      required: [validatorId, payload]
+      properties:
+        validatorId:
+          type: string
+          format: uuid
+        payload:
+          type: string
+          description: Arbitrary payload to sign (base64 encoded).
+        expiresAt:
+          type: string
+          format: date-time
+    SignValidatorResponse:
+      type: object
+      required: [validatorId, signature]
+      properties:
+        validatorId:
+          type: string
+          format: uuid
+        signature:
+          type: string
+        signedAt:
+          type: string
+          format: date-time
+        keyId:
+          type: string
+          description: Identifier of the signing key material.
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/HealthCheck'
+    HealthCheck:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, down]
+        observedAt:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties:
+            type: string
