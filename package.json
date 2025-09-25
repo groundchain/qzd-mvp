@@ -14,7 +14,7 @@
     "prepare": "husky",
     "oas:lint": "redocly lint openapi/openapi.yaml",
     "oas:mock": "start-server-and-test \"prism mock openapi/openapi.yaml --host 127.0.0.1 --port 4010\" http-get://127.0.0.1:4010/health/live \"node ./scripts/oas-mock-check.mjs\"",
-    "oas:docs": "redocly build-docs openapi/openapi.yaml --output openapi/dist"
+    "oas:docs": "redocly build-docs openapi/openapi.yaml --output openapi/dist/index.html"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
