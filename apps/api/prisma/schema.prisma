@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  phone        String        @unique
+  dpi          String        @unique
+  displayName  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  entries      LedgerEntry[]
+  kycFiles     KycFile[]
+  auditLogs    AuditLog[]
+}
+
+model LedgerEntry {
+  id             String   @id @default(uuid())
+  account        Account  @relation(fields: [accountId], references: [id])
+  accountId      String
+  amount         Decimal
+  currency       String   @default("QZD")
+  entryType      String
+  memo           String?
+  createdAt      DateTime @default(now())
+
+  @@index([accountId])
+}
+
+model Validator {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+}
+
+model KycFile {
+  id         String   @id @default(uuid())
+  account    Account  @relation(fields: [accountId], references: [id])
+  accountId  String
+  filename   String
+  mimeType   String
+  storageUrl String
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  account   Account? @relation(fields: [accountId], references: [id])
+  accountId String?
+  action    String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
