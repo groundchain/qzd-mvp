@@ -4,6 +4,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { secp256k1 } from '@noble/curves/secp256k1';
 
 import { ApiClient, createLedger } from './index.js';
+import * as ledgerModule from '@qzd/ledger';
 import type { LedgerConfig, LedgerSignature } from '@qzd/ledger';
 
 describe('ApiClient', () => {
@@ -48,7 +49,7 @@ describe('createLedger', () => {
       sigs: [] as LedgerSignature[],
     };
 
-    const canonical = canonicalString(payload);
+    const canonical = ledgerModule.canonicalizeEntryPayload(payload);
     payload.sigs = validatorPrivKeys.slice(0, 2).map((privHex, index) => ({
       validatorId: config.issuanceValidators[index].id,
       signature: signCanonical(canonical, privHex),
@@ -65,22 +66,3 @@ function signCanonical(canonical: string, privHex: string): string {
   return bytesToHex(secp256k1.sign(digest, hexToBytes(privHex)).toCompactRawBytes());
 }
 
-function canonicalString(input: { [key: string]: unknown }): string {
-  return JSON.stringify(canonicalize(input));
-}
-
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => canonicalize(item));
-  }
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined);
-    entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of entries) {
-      result[key] = canonicalize(val);
-    }
-    return result;
-  }
-  return value;
-}

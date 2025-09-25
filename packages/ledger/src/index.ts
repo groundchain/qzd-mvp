@@ -131,7 +131,7 @@ export class AppendOnlyLedger {
       }
     }
 
-    const canonical = buildCanonicalPayload(input);
+    const canonical = canonicalizeEntryPayload(input);
 
     if (input.type === 'ISSUE') {
       const isValid = validateMultisig({
@@ -259,7 +259,7 @@ export function validateMultisig(input: MultisigValidationInput): boolean {
   return verified >= input.threshold;
 }
 
-function buildCanonicalPayload(input: PostEntryInput): string {
+export function canonicalizeEntryPayload(input: PostEntryInput): string {
   const payload: CanonicalPayload = {
     type: input.type,
     amount: input.amount,

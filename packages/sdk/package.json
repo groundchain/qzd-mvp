@@ -12,8 +12,9 @@
   },
   "files": ["dist"],
   "scripts": {
+    "pretest": "pnpm --filter @qzd/shared build && pnpm --filter @qzd/ledger build",
     "build": "tsup src/index.ts --dts --format esm --out-dir dist --clean",
-    "test": "vitest run",
+    "test": "pnpm run pretest && vitest run",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },
