@@ -1,34 +1,52 @@
 import { Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateAccountInput } from './dto/create-account.dto.js';
+import type { CreateAccountRequest } from '../../generated/server/model/createAccountRequest.js';
+import type { Account } from '../../generated/server/model/account.js';
+import type { AccountBalance } from '../../generated/server/model/accountBalance.js';
+import type { LedgerEntry } from '../../generated/server/model/ledgerEntry.js';
+import type { LedgerHistoryResponse } from '../../generated/server/model/ledgerHistoryResponse.js';
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly _prisma: PrismaService) {}
 
-  async createAccount(dto: CreateAccountInput) {
+  async createAccount(dto: CreateAccountRequest): Promise<Account> {
     return {
-      accountId: crypto.randomUUID(),
-      phone: dto.phone,
-      displayName: dto.displayName,
-      status: 'pending_kyc'
-    } as const;
+      id: crypto.randomUUID(),
+      ownerId: dto.ownerId,
+      currency: dto.currency ?? 'QZD',
+      status: 'active',
+      tags: dto.tags ?? [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
   }
 
-  async getBalance(accountId: string) {
+  async getBalance(accountId: string): Promise<AccountBalance> {
     return {
       accountId,
       currency: 'QZD',
       balance: '0.00',
-      lastUpdated: new Date().toISOString()
-    } as const;
+      available: '0.00',
+      holds: [],
+      asOf: new Date().toISOString()
+    };
   }
 
-  async getHistory(accountId: string) {
+  async getHistory(accountId: string): Promise<LedgerHistoryResponse> {
+    const sampleEntry: LedgerEntry = {
+      id: crypto.randomUUID(),
+      type: 'transfer',
+      amount: '0.00',
+      currency: 'QZD',
+      direction: 'credit',
+      createdAt: new Date().toISOString()
+    };
     return {
       accountId,
-      entries: []
-    } as const;
+      items: [sampleEntry],
+      nextCursor: undefined
+    };
   }
 }

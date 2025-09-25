@@ -1,47 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import crypto from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { TransferInput } from './dto/transfer.dto.js';
-import { IssueInput } from './dto/issue.dto.js';
-import { RedeemInput } from './dto/redeem.dto.js';
+import type { TransferRequest } from '../../generated/server/model/transferRequest.js';
+import type { IssueRequest } from '../../generated/server/model/issueRequest.js';
+import type { RedeemRequest } from '../../generated/server/model/redeemRequest.js';
+import type { LedgerSubmissionResponse } from '../../generated/server/model/ledgerSubmissionResponse.js';
 
 @Injectable()
 export class LedgerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly _prisma: PrismaService) {}
 
-  async transfer(dto: TransferInput) {
+  async transfer(dto: TransferRequest): Promise<LedgerSubmissionResponse> {
+    const submissionId = dto.idempotencyKey ?? crypto.randomUUID();
     return {
-      transactionId: crypto.randomUUID(),
-      type: 'transfer',
-      fromAccountId: dto.fromAccountId,
-      toAccountId: dto.toAccountId,
-      amount: dto.amount,
-      memo: dto.memo ?? null,
-      status: 'completed'
-    } as const;
+      submissionId,
+      status: 'accepted',
+      estimatedCompletion: new Date(Date.now() + 2 * 60_000).toISOString()
+    };
   }
 
-  async issue(dto: IssueInput) {
+  async issue(dto: IssueRequest): Promise<LedgerSubmissionResponse> {
+    const hasQuorum = dto.approvals.length >= 2;
     return {
-      transactionId: crypto.randomUUID(),
-      type: 'issue',
-      toAccountId: dto.toAccountId,
-      approvals: dto.approvals,
-      amount: dto.amount,
-      memo: dto.memo ?? null,
-      status: 'queued_for_settlement'
-    } as const;
+      submissionId: crypto.randomUUID(),
+      status: hasQuorum ? 'accepted' : 'pending',
+      estimatedCompletion: hasQuorum
+        ? new Date(Date.now() + 5 * 60_000).toISOString()
+        : new Date(Date.now() + 10 * 60_000).toISOString()
+    };
   }
 
-  async redeem(dto: RedeemInput) {
+  async redeem(dto: RedeemRequest): Promise<LedgerSubmissionResponse> {
+    const status = dto.destination?.type === 'cash_pickup' ? 'pending' : 'accepted';
     return {
-      transactionId: crypto.randomUUID(),
-      type: 'redeem',
-      accountId: dto.accountId,
-      agentId: dto.agentId ?? null,
-      amount: dto.amount,
-      memo: dto.memo ?? null,
-      status: 'pending_release'
-    } as const;
+      submissionId: crypto.randomUUID(),
+      status
+    };
   }
 }

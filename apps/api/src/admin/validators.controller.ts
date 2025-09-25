@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service.js';
-import { SignValidatorDto, SignValidatorSchema } from './dto/sign-validator.dto.js';
+import type { SignValidatorRequest } from '../../generated/server/model/signValidatorRequest.js';
+import { signValidatorSchema } from './admin.schemas.js';
 
 @ApiTags('validators')
 @Controller('validators')
@@ -15,9 +16,10 @@ export class ValidatorsController {
   }
 
   @Post('sign')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Simulate signing with the admin validator key.' })
-  async sign(@Body() dto: SignValidatorDto) {
-    const payload = SignValidatorSchema.parse(dto);
+  async sign(@Body() dto: SignValidatorRequest) {
+    const payload = signValidatorSchema.parse(dto);
     return this.adminService.sign(payload);
   }
 }
