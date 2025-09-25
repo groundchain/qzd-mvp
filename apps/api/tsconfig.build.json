@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "preserveSymlinks": true,
+    "paths": {
+      "@qzd/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@qzd/shared/*": ["../../packages/shared/dist/*.d.ts"]
+    }
+  },
+  "exclude": ["**/*.spec.ts", "**/*.test.ts", "vitest.config.ts"]
+}

@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2021", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmitOnError": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "@qzd/shared": ["packages/shared/src/index.ts"],
+      "@qzd/shared/*": ["packages/shared/src/*.ts"],
+      "@qzd/ledger": ["packages/ledger/src/index.ts"],
+      "@qzd/ledger/*": ["packages/ledger/src/*.ts"],
+      "@qzd/sdk": ["packages/sdk/src/index.ts"],
+      "@qzd/sdk/*": ["packages/sdk/src/*.ts"]
+    }
+  }
+}
