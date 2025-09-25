@@ -1,0 +1,1063 @@
+openapi: 3.0.3
+info:
+  title: QZD Remittance API
+  version: 0.1.0
+  description: |
+    The QZD Remittance API enables account management, digital asset issuance and redemption,
+    and remittance operations with comprehensive observability and admin tooling.
+servers:
+  - url: https://api.qzd.example.com
+    description: Production server
+  - url: https://sandbox.qzd.example.com
+    description: Sandbox server
+security:
+  - BearerAuth: []
+tags:
+  - name: Auth
+  - name: Accounts
+  - name: Ledger
+  - name: Transactions
+  - name: Remittances
+  - name: Admin
+  - name: Health
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      operationId: registerUser
+      summary: Register a new customer and provision an associated account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                fullName:
+                  type: string
+              required:
+                - email
+                - password
+                - fullName
+            example:
+              email: "alex.merchant@example.com"
+              password: "Sup3rS3cret!"
+              fullName: "Alex Merchant"
+      responses:
+        '201':
+          description: Registration successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  account:
+                    $ref: '#/components/schemas/Account'
+                  token:
+                    type: string
+                    description: Session token for the newly created user.
+              example:
+                userId: "usr_123456789"
+                account:
+                  id: "acc_987654321"
+                  ownerName: "Alex Merchant"
+                  status: active
+                  createdAt: "2024-05-01T12:30:00Z"
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: loginUser
+      summary: Authenticate an existing user and issue a JWT session token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+              required:
+                - email
+                - password
+            example:
+              email: "alex.merchant@example.com"
+              password: "Sup3rS3cret!"
+      responses:
+        '200':
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expiresIn:
+                    type: integer
+                    format: int64
+                    description: Token expiration time in seconds.
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+                expiresIn: 3600
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+  /accounts:
+    post:
+      tags:
+        - Accounts
+      operationId: createAccount
+      summary: Create a new remittance ledger account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ownerId:
+                  type: string
+                displayName:
+                  type: string
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+              required:
+                - ownerId
+            example:
+              ownerId: "usr_123456789"
+              displayName: "Northbridge Holdings USD Account"
+              metadata:
+                region: "US"
+      responses:
+        '201':
+          description: Account created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+              example:
+                id: "acc_987654321"
+                ownerId: "usr_123456789"
+                ownerName: "Northbridge Holdings"
+                status: active
+                createdAt: "2024-05-01T12:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /accounts/{id}/balance:
+    get:
+      tags:
+        - Accounts
+        - Ledger
+      operationId: getAccountBalance
+      summary: Retrieve the latest balance snapshot for an account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdPath'
+      responses:
+        '200':
+          description: Account balance retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Balance'
+              example:
+                accountId: "acc_987654321"
+                currency: "USD"
+                available:
+                  currency: "USD"
+                  value: "12500.42"
+                total:
+                  currency: "USD"
+                  value: "13500.42"
+                updatedAt: "2024-05-02T08:15:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /accounts/{id}/transactions:
+    get:
+      tags:
+        - Accounts
+        - Transactions
+      operationId: listAccountTransactions
+      summary: List transactions recorded for a specific account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdPath'
+        - name: limit
+          in: query
+          description: Maximum number of transactions to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          example: 50
+        - name: cursor
+          in: query
+          description: Cursor token for pagination.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transactions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  nextCursor:
+                    type: string
+                    nullable: true
+              example:
+                items:
+                  - id: "txn_001"
+                    accountId: "acc_987654321"
+                    type: credit
+                    amount:
+                      currency: "USD"
+                      value: "500.00"
+                    status: posted
+                    createdAt: "2024-05-02T09:00:00Z"
+                  - id: "txn_002"
+                    accountId: "acc_987654321"
+                    type: debit
+                    amount:
+                      currency: "USD"
+                      value: "125.00"
+                    status: pending
+                    createdAt: "2024-05-02T10:45:00Z"
+                nextCursor: null
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /tx/transfer:
+    post:
+      tags:
+        - Transactions
+      operationId: initiateTransfer
+      summary: Move balances between accounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+            example:
+              sourceAccountId: "acc_123"
+              destinationAccountId: "acc_987654321"
+              amount:
+                currency: "USD"
+                value: "250.00"
+              memo: "Vendor settlement"
+      responses:
+        '202':
+          description: Transfer accepted for processing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+              example:
+                id: "txn_103"
+                accountId: "acc_123"
+                counterpartyAccountId: "acc_987654321"
+                type: transfer
+                amount:
+                  currency: "USD"
+                  value: "250.00"
+                status: pending
+                createdAt: "2024-05-02T11:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /tx/issue:
+    post:
+      tags:
+        - Transactions
+        - Ledger
+      operationId: issueTokens
+      summary: Issue new QZD tokens to an account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueRequest'
+            example:
+              accountId: "acc_987654321"
+              amount:
+                currency: "QZD"
+                value: "1000"
+              reference: "Treasury mint"
+      responses:
+        '202':
+          description: Issuance request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueEnvelope'
+              example:
+                envelopeId: "issue_env_001"
+                status: pending
+                submittedAt: "2024-05-02T11:15:00Z"
+                request:
+                  accountId: "acc_987654321"
+                  amount:
+                    currency: "QZD"
+                    value: "1000"
+                  reference: "Treasury mint"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /tx/redeem:
+    post:
+      tags:
+        - Transactions
+        - Ledger
+      operationId: redeemTokens
+      summary: Redeem QZD tokens for fiat settlement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemRequest'
+            example:
+              accountId: "acc_987654321"
+              amount:
+                currency: "QZD"
+                value: "500"
+              destinationBankAccount:
+                bankName: "First Cooperative Bank"
+                routingNumber: "021000021"
+                accountNumber: "0987654321"
+      responses:
+        '202':
+          description: Redemption request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+              example:
+                id: "txn_red_001"
+                accountId: "acc_987654321"
+                type: redemption
+                amount:
+                  currency: "QZD"
+                  value: "500"
+                status: pending
+                createdAt: "2024-05-02T11:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /remit/us/acquire-qzd:
+    post:
+      tags:
+        - Remittances
+      operationId: acquireQZDForUSRemittance
+      summary: Initiate a US remittance flow that acquires QZD liquidity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/USRemitAcquireQZDRequest'
+            example:
+              remitterAccountId: "acc_444"
+              beneficiaryAccountId: "acc_555"
+              usdAmount:
+                currency: "USD"
+                value: "1500.00"
+              purposeCode: "FAMILY_SUPPORT"
+              complianceDeclarations:
+                sourceOfFunds: "Salary"
+                relationshipToBeneficiary: "Sibling"
+      responses:
+        '202':
+          description: Remittance request accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId:
+                    type: string
+                  status:
+                    type: string
+                  quote:
+                    $ref: '#/components/schemas/QuoteResponse'
+              example:
+                requestId: "remit_req_001"
+                status: pending
+                quote:
+                  quoteId: "quote_123"
+                  sellAmount:
+                    currency: "USD"
+                    value: "1500.00"
+                  buyAmount:
+                    currency: "QZD"
+                    value: "1490.00"
+                  rate: "0.9933"
+                  expiresAt: "2024-05-02T11:40:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /simulate/quote:
+    get:
+      tags:
+        - Remittances
+      operationId: simulateQuote
+      summary: Simulate a quote for acquiring QZD against a fiat amount.
+      parameters:
+        - name: sellCurrency
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "USD"
+        - name: sellAmount
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d+(?:\\.\\d+)?$"
+          example: "1000.00"
+        - name: buyCurrency
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "QZD"
+      responses:
+        '200':
+          description: Quote simulated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+              example:
+                quoteId: "quote_789"
+                sellAmount:
+                  currency: "USD"
+                  value: "1000.00"
+                buyAmount:
+                  currency: "QZD"
+                  value: "995.00"
+                rate: "0.9950"
+                expiresAt: "2024-05-02T12:00:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /validators:
+    get:
+      tags:
+        - Ledger
+      operationId: listValidators
+      summary: Retrieve the validator set that anchors the QZD network.
+      responses:
+        '200':
+          description: Validator list retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  validators:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Validator'
+              example:
+                validators:
+                  - id: "val_001"
+                    name: "QZD Northern Node"
+                    status: active
+                    endpoint: "https://validator1.qzd.example.com"
+                  - id: "val_002"
+                    name: "QZD Southern Node"
+                    status: standby
+                    endpoint: "https://validator2.qzd.example.com"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /admin/alerts:
+    get:
+      tags:
+        - Admin
+      operationId: listAdminAlerts
+      summary: Retrieve open administrative alerts.
+      responses:
+        '200':
+          description: Alerts retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+              example:
+                alerts:
+                  - id: "alert_001"
+                    severity: high
+                    message: "Validator quorum degradation detected."
+                    createdAt: "2024-05-02T09:20:00Z"
+                  - id: "alert_002"
+                    severity: medium
+                    message: "Delayed settlement from correspondent bank."
+                    createdAt: "2024-05-02T10:05:00Z"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health/live:
+    get:
+      tags:
+        - Health
+      operationId: getLiveness
+      summary: Liveness probe endpoint.
+      responses:
+        '200':
+          description: Service is live.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              example:
+                status: "live"
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+  /health/ready:
+    get:
+      tags:
+        - Health
+      operationId: getReadiness
+      summary: Readiness probe endpoint.
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  dependencies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        status:
+                          type: string
+              example:
+                status: "ready"
+                dependencies:
+                  - name: database
+                    status: healthy
+                  - name: validatorNetwork
+                    status: healthy
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '503':
+          description: Service is not ready.
+          headers:
+            Retry-After:
+              description: Suggested wait time before retrying the readiness check in seconds.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SERVICE_UNAVAILABLE"
+                message: "Validator quorum not yet established."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AccountIdPath:
+      name: id
+      in: path
+      required: true
+      description: Unique account identifier.
+      schema:
+        type: string
+  responses:
+    BadRequestError:
+      description: Invalid request payload or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "BAD_REQUEST"
+            message: "The provided payload failed validation."
+    UnauthorizedError:
+      description: Authentication credentials are missing or invalid.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Authentication challenge.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "UNAUTHORIZED"
+            message: "Bearer token is invalid or expired."
+    ForbiddenError:
+      description: The authenticated principal lacks required permissions.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "FORBIDDEN"
+            message: "You do not have access to this resource."
+    NotFoundError:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "NOT_FOUND"
+            message: "Account acc_987654321 was not found."
+    ConflictError:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "CONFLICT"
+            message: "Transfer is already in progress."
+    TooManyRequestsError:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          description: Suggested wait time before retrying the request in seconds.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "TOO_MANY_REQUESTS"
+            message: "Rate limit exceeded."
+    InternalServerError:
+      description: Unexpected server error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "INTERNAL_ERROR"
+            message: "An unexpected error occurred."
+  schemas:
+    MonetaryAmount:
+      type: object
+      properties:
+        currency:
+          type: string
+        value:
+          type: string
+      required:
+        - currency
+        - value
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        ownerName:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - suspended
+            - closed
+        createdAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - id
+        - ownerId
+        - status
+        - createdAt
+    Balance:
+      type: object
+      properties:
+        accountId:
+          type: string
+        currency:
+          type: string
+        available:
+          $ref: '#/components/schemas/MonetaryAmount'
+        total:
+          $ref: '#/components/schemas/MonetaryAmount'
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - accountId
+        - currency
+        - available
+        - total
+        - updatedAt
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        counterpartyAccountId:
+          type: string
+        type:
+          type: string
+          enum:
+            - credit
+            - debit
+            - transfer
+            - issuance
+            - redemption
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        status:
+          type: string
+          enum:
+            - pending
+            - posted
+            - failed
+        createdAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - id
+        - accountId
+        - type
+        - amount
+        - status
+        - createdAt
+    TransferRequest:
+      type: object
+      properties:
+        sourceAccountId:
+          type: string
+        destinationAccountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        memo:
+          type: string
+      required:
+        - sourceAccountId
+        - destinationAccountId
+        - amount
+    IssueRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        reference:
+          type: string
+      required:
+        - accountId
+        - amount
+    IssueEnvelope:
+      type: object
+      properties:
+        envelopeId:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - completed
+            - failed
+        submittedAt:
+          type: string
+          format: date-time
+        request:
+          $ref: '#/components/schemas/IssueRequest'
+      required:
+        - envelopeId
+        - status
+        - submittedAt
+        - request
+    RedeemRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        destinationBankAccount:
+          type: object
+          properties:
+            bankName:
+              type: string
+            routingNumber:
+              type: string
+            accountNumber:
+              type: string
+          required:
+            - bankName
+            - routingNumber
+            - accountNumber
+      required:
+        - accountId
+        - amount
+        - destinationBankAccount
+    USRemitAcquireQZDRequest:
+      type: object
+      properties:
+        remitterAccountId:
+          type: string
+        beneficiaryAccountId:
+          type: string
+        usdAmount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        purposeCode:
+          type: string
+        complianceDeclarations:
+          type: object
+          properties:
+            sourceOfFunds:
+              type: string
+            relationshipToBeneficiary:
+              type: string
+      required:
+        - remitterAccountId
+        - beneficiaryAccountId
+        - usdAmount
+    QuoteResponse:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        sellAmount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        buyAmount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        rate:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - quoteId
+        - sellAmount
+        - buyAmount
+        - rate
+        - expiresAt
+    Validator:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        endpoint:
+          type: string
+          format: uri
+      required:
+        - id
+        - name
+        - status
+        - endpoint
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        severity:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - severity
+        - message
+        - createdAt
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - code
+        - message
