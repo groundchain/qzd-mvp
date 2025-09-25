@@ -10,16 +10,19 @@ to scaffold clients, servers, and documentation artifacts via
 Install the generator CLI locally:
 
 ```bash
-pnpm dlx @openapitools/openapi-generator-cli@latest version-manager set 7.5.0
+pnpm dlx @openapitools/openapi-generator-cli@latest version-manager set 7.14.0
 ```
 
-Then generate the desired artifact, for example a NestJS server stub and a
-TypeScript fetch-based client:
+Then generate the desired artifact from the `apps/api` directory so the
+relative OpenAPI spec path resolves correctly. For example, to scaffold a
+NestJS server stub and a TypeScript fetch-based client:
 
 ```bash
+cd apps/api
+
 pnpm dlx @openapitools/openapi-generator-cli@latest generate \
   -i openapi/openapi.yaml \
-  -g nestjs-server \
+  -g typescript-nestjs \
   -o generated/server
 
 pnpm dlx @openapitools/openapi-generator-cli@latest generate \
