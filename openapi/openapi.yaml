@@ -2,24 +2,34 @@ openapi: 3.0.3
 info:
   title: QZD Remittance API
   version: 0.1.0
+  license:
+    name: Proprietary
+    url: https://legal.qzd.rovira.pro/licenses/proprietary
   description: |
     The QZD Remittance API enables account management, digital asset issuance and redemption,
     and remittance operations with comprehensive observability and admin tooling.
 servers:
-  - url: https://api.qzd.example.com
+  - url: https://api.qzd.rovira.pro
     description: Production server
-  - url: https://sandbox.qzd.example.com
+  - url: https://sandbox.qzd.rovira.pro
     description: Sandbox server
 security:
   - BearerAuth: []
 tags:
   - name: Auth
+    description: Authentication workflows for user registration and login.
   - name: Accounts
+    description: Account provisioning, balances, and transaction history.
   - name: Ledger
+    description: Ledger-specific operations and reconciliation endpoints.
   - name: Transactions
+    description: Money movement operations including transfers and issuance.
   - name: Remittances
+    description: Cross-border remittance flows and related quote operations.
   - name: Admin
+    description: Administrative visibility and alert management endpoints.
   - name: Health
+    description: Service health and readiness probes.
 paths:
   /auth/register:
     post:
@@ -68,6 +78,7 @@ paths:
               example:
                 userId: "usr_123456789"
                 account:
+                  ownerId: "usr_123456789"
                   id: "acc_987654321"
                   ownerName: "Alex Merchant"
                   status: active
