@@ -1,7 +1,7 @@
 import type { HealthResponse } from '@qzd/shared';
 import { healthResponseSchema } from '@qzd/shared';
-import type { AppendOnlyLedger, LedgerEntry } from '@qzd/ledger';
-import { AppendOnlyLedger as Ledger, createSigner } from '@qzd/ledger';
+import type { LedgerEntry, LedgerConfig } from '@qzd/ledger';
+import { AppendOnlyLedger as Ledger, validateMultisig } from '@qzd/ledger';
 export interface ApiClientOptions {
   baseUrl: string;
 }
@@ -16,9 +16,9 @@ export class ApiClient {
   }
 }
 
-export function createLedger<T>(): AppendOnlyLedger<T> {
-  return new Ledger<T>();
+export function createLedger(config: LedgerConfig): Ledger {
+  return new Ledger(config);
 }
 
-export { createSigner };
-export type { LedgerEntry };
+export { validateMultisig };
+export type { LedgerEntry, LedgerConfig };
