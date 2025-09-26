@@ -12,6 +12,14 @@ process.on('unhandledRejection', (reason) => {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const corsOriginsEnv = process.env.CORS_ORIGIN;
+  const corsOrigins = corsOriginsEnv
+    ? corsOriginsEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : undefined;
+
+  app.enableCors({
+    origin: corsOrigins?.length ? corsOrigins : true,
+  });
   await app.listen(3000);
 }
 
