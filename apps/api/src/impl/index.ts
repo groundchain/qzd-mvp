@@ -1,4 +1,4 @@
-import type { ApiImplementations } from '../generated/index.js';
+import type { ApiImplementations } from '@qzd/sdk-api/server';
 import { AccountsApiImpl } from './accounts.api.js';
 import { AdminApiImpl } from './admin.api.js';
 import { AuthApiImpl } from './auth.api.js';

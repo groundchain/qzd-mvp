@@ -1,1 +1,1 @@
-export * from "./generated/index.js";
+export * from "@qzd/sdk-api/browser";

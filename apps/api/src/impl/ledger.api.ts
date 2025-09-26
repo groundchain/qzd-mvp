@@ -2,7 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { LedgerApi } from '../generated/api/index.js';
+import { LedgerApi } from '@qzd/sdk-api/server';
 import type {
   Balance,
   IssueEnvelope,
@@ -10,7 +10,7 @@ import type {
   ListValidators200Response,
   RedeemRequest,
   Transaction,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class LedgerApiImpl extends LedgerApi {
