@@ -3,12 +3,6 @@ node_modules
 .DS_Store
 dist
 openapi/dist
-apps/api/src/generated
-packages/sdk-browser/src/generated
-packages/sdk-node/src/generated
-packages/sdk-api/src/browser/generated
-packages/sdk-api/src/node/generated
-packages/sdk-api/src/server/generated
 .openapi-generator
 coverage
 .husky/_

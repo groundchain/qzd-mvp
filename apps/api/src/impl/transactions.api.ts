@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { TransactionsApi } from '@qzd/sdk-api/server';
@@ -11,21 +11,29 @@ import type {
   Transaction,
   TransferRequest,
 } from '@qzd/sdk-api/server';
+import { InMemoryBankService, getFallbackBankService } from '../in-memory-bank.service.js';
 
 @Injectable()
 export class TransactionsApiImpl extends TransactionsApi {
+  private readonly bank: InMemoryBankService;
+
+  constructor(@Optional() bank?: InMemoryBankService) {
+    super();
+    this.bank = bank ?? getFallbackBankService();
+  }
+
   override initiateTransfer(
     transferRequest: TransferRequest,
     request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
-    throw new Error('Method not implemented.');
+    return this.bank.initiateTransfer(transferRequest, request);
   }
 
   override issueTokens(
-    issueRequest: IssueRequest,
-    request: Request,
+    _issueRequest: IssueRequest,
+    _request: Request,
   ): IssueEnvelope | Promise<IssueEnvelope> | Observable<IssueEnvelope> {
-    throw new Error('Method not implemented.');
+    throw new BadRequestException('Issuance is not supported in the demo environment');
   }
 
   override listAccountTransactions(
@@ -37,13 +45,14 @@ export class TransactionsApiImpl extends TransactionsApi {
     | ListAccountTransactions200Response
     | Promise<ListAccountTransactions200Response>
     | Observable<ListAccountTransactions200Response> {
-    throw new Error('Method not implemented.');
+    const resolvedLimit = typeof limit === 'number' && Number.isFinite(limit) ? limit : undefined;
+    return this.bank.listAccountTransactions(id, request, resolvedLimit, cursor);
   }
 
   override redeemTokens(
-    redeemRequest: RedeemRequest,
-    request: Request,
+    _redeemRequest: RedeemRequest,
+    _request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
-    throw new Error('Method not implemented.');
+    throw new BadRequestException('Redemptions are not supported in the demo environment');
   }
 }
