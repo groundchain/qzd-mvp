@@ -2,11 +2,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { HealthApi } from '../generated/api/index.js';
+import { HealthApi } from '@qzd/sdk-api/server';
 import type {
   GetLiveness200Response,
   GetReadiness200Response,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class HealthApiImpl extends HealthApi {

@@ -2,8 +2,8 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { AdminApi } from '../generated/api/index.js';
-import type { ListAdminAlerts200Response } from '../generated/models/index.js';
+import { AdminApi } from '@qzd/sdk-api/server';
+import type { ListAdminAlerts200Response } from '@qzd/sdk-api/server';
 
 @Injectable()
 export class AdminApiImpl extends AdminApi {

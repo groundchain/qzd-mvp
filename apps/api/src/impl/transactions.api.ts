@@ -2,7 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { TransactionsApi } from '../generated/api/index.js';
+import { TransactionsApi } from '@qzd/sdk-api/server';
 import type {
   IssueEnvelope,
   IssueRequest,
@@ -10,7 +10,7 @@ import type {
   RedeemRequest,
   Transaction,
   TransferRequest,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class TransactionsApiImpl extends TransactionsApi {

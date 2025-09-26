@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "pnpm --filter @qzd/sdk-api build",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "dev": "ts-node --esm src/main.ts",
@@ -15,6 +16,7 @@
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
+    "@qzd/sdk-api": "workspace:*",
     "@qzd/shared": "workspace:*",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1"

@@ -2,12 +2,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { RemittancesApi } from '../generated/api/index.js';
+import { RemittancesApi } from '@qzd/sdk-api/server';
 import type {
   AcquireQZDForUSRemittance202Response,
   QuoteResponse,
   USRemitAcquireQZDRequest,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class RemittancesApiImpl extends RemittancesApi {

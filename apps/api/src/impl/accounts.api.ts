@@ -2,13 +2,13 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { AccountsApi } from '../generated/api/index.js';
+import { AccountsApi } from '@qzd/sdk-api/server';
 import type {
   Account,
   Balance,
   CreateAccountRequest,
   ListAccountTransactions200Response,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class AccountsApiImpl extends AccountsApi {

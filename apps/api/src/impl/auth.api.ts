@@ -2,13 +2,13 @@
 import { Injectable } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { AuthApi } from '../generated/api/index.js';
+import { AuthApi } from '@qzd/sdk-api/server';
 import type {
   LoginUser200Response,
   LoginUserRequest,
   RegisterUser201Response,
   RegisterUserRequest,
-} from '../generated/models/index.js';
+} from '@qzd/sdk-api/server';
 
 @Injectable()
 export class AuthApiImpl extends AuthApi {

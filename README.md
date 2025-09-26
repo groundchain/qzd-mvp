@@ -8,6 +8,7 @@ This repository contains the Quetzal Digital MVP monorepo managed with pnpm work
 - **packages/shared** – Shared Zod schemas, DTOs, and utility types.
 - **packages/ledger** – TypeScript append-only ledger with signature support.
 - **packages/sdk** – Browser/Node SDK wrapping the API and ledger helpers.
+- **packages/sdk-api** – Generated OpenAPI server and client bindings consumed by other packages.
 
 ## Getting started
 
@@ -21,5 +22,7 @@ pnpm install
 - `pnpm test` – Executes tests across the monorepo.
 - `pnpm lint` – Lints all packages.
 - `pnpm typecheck` – Runs TypeScript checks for all packages.
+- `pnpm gen:sdks` – Regenerates the OpenAPI server/browser/node clients in `@qzd/sdk-api`.
+- `pnpm gen:all` – Regenerates clients and the shared OpenAPI TypeScript types.
 
 Husky runs linting and type checking before commits, and GitHub Actions ensures CI parity on pull requests.
