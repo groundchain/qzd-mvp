@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { AuthApi } from '@qzd/sdk-api/server';
@@ -9,20 +9,28 @@ import type {
   RegisterUser201Response,
   RegisterUserRequest,
 } from '@qzd/sdk-api/server';
+import { InMemoryBankService, getFallbackBankService } from '../in-memory-bank.service.js';
 
 @Injectable()
 export class AuthApiImpl extends AuthApi {
+  private readonly bank: InMemoryBankService;
+
+  constructor(@Optional() bank?: InMemoryBankService) {
+    super();
+    this.bank = bank ?? getFallbackBankService();
+  }
+
   override loginUser(
     loginUserRequest: LoginUserRequest,
-    request: Request,
+    _request: Request,
   ): LoginUser200Response | Promise<LoginUser200Response> | Observable<LoginUser200Response> {
-    throw new Error('Method not implemented.');
+    return this.bank.loginUser(loginUserRequest);
   }
 
   override registerUser(
     registerUserRequest: RegisterUserRequest,
-    request: Request,
+    _request: Request,
   ): RegisterUser201Response | Promise<RegisterUser201Response> | Observable<RegisterUser201Response> {
-    throw new Error('Method not implemented.');
+    return this.bank.registerUser(registerUserRequest);
   }
 }

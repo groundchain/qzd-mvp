@@ -7,7 +7,7 @@
     "prebuild": "pnpm --filter @qzd/ledger build && pnpm --filter @qzd/sdk-api build",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "dev": "ts-node --esm src/main.ts",
+    "dev": "node --loader ts-node/esm --experimental-specifier-resolution=node src/main.ts",
     "test": "vitest run",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
@@ -28,6 +28,7 @@
     "@nestjs/testing": "^10.0.0",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.0",
+    "@types/supertest": "^2.0.16",
     "supertest": "^6.3.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
