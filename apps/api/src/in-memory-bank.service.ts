@@ -218,7 +218,8 @@ export class InMemoryBankService {
 
     const startIndex = cursor ? this.findCursorIndex(history, cursor) + 1 : 0;
     const slice = history.slice(startIndex, startIndex + limit);
-    const nextCursor = startIndex + limit < history.length ? history[startIndex + limit - 1]?.id ?? null : null;
+    const nextCursor =
+      startIndex + limit < history.length ? history[startIndex + limit - 1]?.id ?? null : null;
 
     return {
       items: slice,
@@ -299,7 +300,12 @@ export class InMemoryBankService {
   private requireUser(request: Request): UserRecord {
     const headers = (request as unknown as { headers?: Record<string, unknown> }).headers ?? {};
     const authHeaderValue = headers['authorization'] ?? headers['Authorization'];
-    const authHeader = typeof authHeaderValue === 'string' ? authHeaderValue : Array.isArray(authHeaderValue) ? authHeaderValue[0] : undefined;
+    const authHeader =
+      typeof authHeaderValue === 'string'
+        ? authHeaderValue
+        : Array.isArray(authHeaderValue)
+          ? authHeaderValue[0]
+          : undefined;
     if (typeof authHeader !== 'string' || !authHeader.toLowerCase().startsWith('bearer ')) {
       throw new UnauthorizedException('Missing bearer token');
     }
@@ -406,4 +412,3 @@ const fallbackBankService = new InMemoryBankService();
 export function getFallbackBankService(): InMemoryBankService {
   return fallbackBankService;
 }
-

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 const sharedSrcDir = fileURLToPath(new URL('../../packages/shared/src/', import.meta.url));
+const sdkApiServerDir = fileURLToPath(new URL('../../packages/sdk-api/src/server/', import.meta.url));
 const require = createRequire(import.meta.url);
 const nobleHashesDir = dirname(require.resolve('@noble/hashes/sha256.js')).replace(/\\/g, '/');
 const nobleCurvesDir = dirname(require.resolve('@noble/curves/secp256k1.js')).replace(/\\/g, '/');
@@ -29,6 +30,14 @@ export default defineConfig({
       {
         find: /^@qzd\/ledger\/(.*)$/,
         replacement: fileURLToPath(new URL(`../../packages/ledger/src/$1`, import.meta.url))
+      },
+      {
+        find: /^@qzd\/sdk-api\/server$/,
+        replacement: fileURLToPath(new URL('../../packages/sdk-api/src/server/index.ts', import.meta.url))
+      },
+      {
+        find: /^@qzd\/sdk-api\/server\/(.*)$/,
+        replacement: `${sdkApiServerDir}$1`
       },
       {
         find: /^@noble\/hashes$/,

@@ -144,7 +144,11 @@ export default function App() {
         setToken(sessionToken);
         setAccountIdInput(newAccountId);
         setAccountId(newAccountId);
-        resetStatus(sessionToken ? 'Registration successful. You are now signed in.' : 'Registration successful. Please log in.');
+        resetStatus(
+          sessionToken
+            ? 'Registration successful. You are now signed in.'
+            : 'Registration successful. Please log in.',
+        );
       } catch (error) {
         console.error('Registration failed', error);
         resetStatus('Registration failed. Please try again.');
@@ -239,7 +243,17 @@ export default function App() {
         setTransferStatus('idle');
       }
     },
-    [accountId, refreshAccountData, resetStatus, token, transferAmount, transferCurrency, transferDestination, transferMemo, transactionsApi],
+    [
+      accountId,
+      refreshAccountData,
+      resetStatus,
+      token,
+      transferAmount,
+      transferCurrency,
+      transferDestination,
+      transferMemo,
+      transactionsApi,
+    ],
   );
 
   const handlePreviewQuote = useCallback(
@@ -280,7 +294,11 @@ export default function App() {
           API base URL: <code>{configuredBaseUrl}</code>
         </p>
         {token ? <p role="status">Session active.</p> : <p role="status">Not signed in.</p>}
-        {statusMessage && <p className="status" aria-live="polite">{statusMessage}</p>}
+        {statusMessage && (
+          <p className="status" aria-live="polite">
+            {statusMessage}
+          </p>
+        )}
       </header>
 
       <section aria-labelledby="auth-section">
