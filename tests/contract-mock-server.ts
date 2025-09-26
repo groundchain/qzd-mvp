@@ -1,18 +1,26 @@
-import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createServer, IncomingMessage, ServerResponse, request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 const HOST = '127.0.0.1';
-const REQUESTED_PORT = Number(process.env.CONTRACT_MOCK_PORT ?? 4010);
+const REQUESTED_PORT = Number(process.env.CONTRACT_MOCK_PORT ?? 0);
 
 let serverPromise: Promise<string> | null = null;
 let resolvedBaseUrl: string | null = process.env.CONTRACT_BASE_URL ?? null;
 
 export async function ensureContractMockServer(): Promise<string> {
-  if (!serverPromise) {
-    serverPromise = startServer();
+  if (resolvedBaseUrl) {
+    return resolvedBaseUrl;
   }
 
-  return serverPromise;
+  if (!serverPromise) {
+    serverPromise = startServer().catch((error) => {
+      serverPromise = null;
+      throw error;
+    });
+  }
+
+  resolvedBaseUrl = await serverPromise;
+  return resolvedBaseUrl;
 }
 
 function getBaseUrl(port: number): string {
@@ -20,6 +28,12 @@ function getBaseUrl(port: number): string {
 }
 
 async function startServer(): Promise<string> {
+  const existing = await probeExistingServer();
+  if (existing) {
+    updateEnv(existing.url, existing.port);
+    return existing.url;
+  }
+
   return new Promise((resolve, reject) => {
     const server = createServer(async (request, response) => {
       try {
@@ -28,6 +42,11 @@ async function startServer(): Promise<string> {
         console.error('Contract mock server encountered an error handling request', error);
         sendJson(response, 500, { message: 'Internal Server Error' });
       }
+    });
+
+    server.on('clientError', (error, socket) => {
+      console.error('Contract mock server encountered a client connection error', error);
+      socket.destroy();
     });
 
     let hasRetriedWithRandomPort = false;
@@ -40,62 +59,105 @@ async function startServer(): Promise<string> {
           return;
         }
 
-        const baseUrl = getBaseUrl((address as AddressInfo).port);
-        resolvedBaseUrl = baseUrl;
-
-        process.env.CONTRACT_BASE_URL = resolvedBaseUrl;
-        process.env.CONTRACT_MOCK_PORT = String(address.port);
+        const actualPort = (address as AddressInfo).port;
+        const baseUrl = getBaseUrl(actualPort);
+        updateEnv(baseUrl, actualPort);
 
         server.unref();
-        resolve(resolvedBaseUrl);
+        resolve(baseUrl);
       });
     };
 
     server.on('error', (error: NodeJS.ErrnoException) => {
       if (error.code === 'EADDRINUSE' && REQUESTED_PORT !== 0 && !hasRetriedWithRandomPort) {
         hasRetriedWithRandomPort = true;
-        waitForExistingServer()
-          .then((existingBaseUrl) => {
-            resolvedBaseUrl = existingBaseUrl;
-            process.env.CONTRACT_BASE_URL = resolvedBaseUrl;
-            process.env.CONTRACT_MOCK_PORT = String(REQUESTED_PORT);
-            resolve(existingBaseUrl);
+        probeExistingServer()
+          .then((existingServer) => {
+            if (existingServer) {
+              updateEnv(existingServer.url, existingServer.port);
+              resolve(existingServer.url);
+              return;
+            }
+
+            listen(0);
           })
-          .catch(() => {
+          .catch((probeError) => {
+            console.error('Contract mock server probe failed after EADDRINUSE', probeError);
             listen(0);
           });
         return;
       }
 
+      server.close();
       reject(error);
     });
 
-    listen(REQUESTED_PORT);
+    listen(REQUESTED_PORT > 0 ? REQUESTED_PORT : 0);
   });
 }
 
-async function waitForExistingServer(): Promise<string> {
-  if (REQUESTED_PORT === 0) {
-    throw new Error('No fixed port configured for contract mock server');
+async function probeExistingServer(): Promise<{ url: string; port: number } | null> {
+  if (REQUESTED_PORT <= 0) {
+    return null;
   }
 
-  const timeoutAt = Date.now() + 2000;
   const baseUrl = getBaseUrl(REQUESTED_PORT);
+  const deadline = Date.now() + 2000;
 
-  while (Date.now() < timeoutAt) {
-    try {
-      const response = await fetch(`${baseUrl}/health/live`);
-      if (response.ok) {
-        return baseUrl;
-      }
-    } catch {
-      // Server might not be ready yet, keep polling.
+  while (Date.now() < deadline) {
+    const isHealthy = await checkHealth(REQUESTED_PORT);
+    if (isHealthy) {
+      return { url: baseUrl, port: REQUESTED_PORT };
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  throw new Error('Timed out waiting for existing contract mock server to become ready');
+  return null;
+}
+
+function updateEnv(baseUrl: string, port: number): void {
+  resolvedBaseUrl = baseUrl;
+  process.env.CONTRACT_BASE_URL = baseUrl;
+  process.env.CONTRACT_MOCK_PORT = String(port);
+}
+
+function checkHealth(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finalize = (value: boolean) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+
+    const request = httpRequest(
+      {
+        host: HOST,
+        port,
+        path: '/health/live',
+        method: 'GET',
+        timeout: 250,
+      },
+      (response) => {
+        response.resume();
+        const status = response.statusCode ?? 0;
+        finalize(status >= 200 && status < 300);
+      },
+    );
+
+    request.on('timeout', () => {
+      request.destroy();
+      finalize(false);
+    });
+
+    request.on('error', () => {
+      finalize(false);
+    });
+
+    request.end();
+  });
 }
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {

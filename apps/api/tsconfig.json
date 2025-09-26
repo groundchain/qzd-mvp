@@ -1,6 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {},
+  "compilerOptions": {
+    "preserveSymlinks": true
+  },
   "include": ["src/**/*", "vitest.config.ts"],
   "exclude": ["dist", "node_modules"]
 }
