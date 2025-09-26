@@ -411,36 +411,37 @@ paths:
         - Transactions
         - Ledger
       operationId: issueTokens
-      summary: Issue new QZD tokens to an account.
+      summary: Execute an approved issuance request and credit the beneficiary account.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/IssueRequest'
+              type: object
+              properties:
+                requestId:
+                  type: string
+                  description: Identifier of the approved issuance request.
+              required:
+                - requestId
             example:
-              accountId: "acc_987654321"
-              amount:
-                currency: "QZD"
-                value: "1000"
-              reference: "Treasury mint"
+              requestId: "ir_000001"
       responses:
-        '202':
-          description: Issuance request accepted.
+        '200':
+          description: Issuance executed successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/IssueEnvelope'
+                $ref: '#/components/schemas/Transaction'
               example:
-                envelopeId: "issue_env_001"
-                status: pending
-                submittedAt: "2024-05-02T11:15:00Z"
-                request:
-                  accountId: "acc_987654321"
-                  amount:
-                    currency: "QZD"
-                    value: "1000"
-                  reference: "Treasury mint"
+                id: "txn_issuance_001"
+                accountId: "acc_987654321"
+                type: issuance
+                amount:
+                  currency: "QZD"
+                  value: "1000"
+                status: posted
+                createdAt: "2024-05-02T11:15:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
         '401':
@@ -676,6 +677,153 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /admin/issuance-requests:
+    get:
+      tags:
+        - Admin
+      operationId: listIssuanceRequests
+      summary: List issuance requests awaiting validator review.
+      responses:
+        '200':
+          description: Issuance requests retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IssuanceRequest'
+              example:
+                items:
+                  - id: "ir_000001"
+                    accountId: "acc_987654321"
+                    amount:
+                      currency: "QZD"
+                      value: "1000"
+                    required: 2
+                    collected: 1
+                    status: collecting
+                  - id: "ir_000002"
+                    accountId: "acc_222222222"
+                    amount:
+                      currency: "QZD"
+                      value: "500"
+                    required: 2
+                    collected: 2
+                    status: ready
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Admin
+        - Ledger
+      operationId: createIssuanceRequest
+      summary: Submit a new issuance request to the validator queue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueRequest'
+            example:
+              accountId: "acc_987654321"
+              amount:
+                currency: "QZD"
+                value: "1000"
+              reference: "Treasury mint"
+      responses:
+        '201':
+          description: Issuance request created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuanceRequest'
+              example:
+                id: "ir_000001"
+                accountId: "acc_987654321"
+                amount:
+                  currency: "QZD"
+                  value: "1000"
+                required: 2
+                collected: 0
+                status: pending
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /admin/issuance-requests/{id}/sign:
+    post:
+      tags:
+        - Admin
+      operationId: signIssuanceRequest
+      summary: Record a validator signature for the issuance request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the issuance request to sign.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                validatorId:
+                  type: string
+                  description: Identifier of the validator providing the signature.
+              required:
+                - validatorId
+            example:
+              validatorId: "validator-1"
+      responses:
+        '200':
+          description: Signature recorded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuanceRequest'
+              example:
+                id: "ir_000001"
+                accountId: "acc_987654321"
+                amount:
+                  currency: "QZD"
+                  value: "1000"
+                required: 2
+                collected: 1
+                status: collecting
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
         '429':
           $ref: '#/components/responses/TooManyRequestsError'
         '500':
@@ -1022,6 +1170,38 @@ components:
         - status
         - submittedAt
         - request
+    IssuanceRequest:
+      type: object
+      description: Track validator approvals for a queued issuance.
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        required:
+          type: integer
+          format: int32
+          description: Number of validator signatures required for approval.
+        collected:
+          type: integer
+          format: int32
+          description: Number of validator signatures collected so far.
+        status:
+          type: string
+          enum:
+            - pending
+            - collecting
+            - ready
+            - completed
+      required:
+        - id
+        - accountId
+        - amount
+        - required
+        - collected
+        - status
     RedeemRequest:
       type: object
       properties:

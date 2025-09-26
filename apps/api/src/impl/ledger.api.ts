@@ -5,8 +5,9 @@ import type { Request } from 'express';
 import { LedgerApi } from '@qzd/sdk-api/server';
 import type {
   Balance,
-  IssueEnvelope,
+  IssuanceRequest,
   IssueRequest,
+  IssueTokensRequest,
   ListValidators200Response,
   RedeemRequest,
   Transaction,
@@ -14,6 +15,13 @@ import type {
 
 @Injectable()
 export class LedgerApiImpl extends LedgerApi {
+  override createIssuanceRequest(
+    _issueRequest: IssueRequest,
+    _request: Request,
+  ): IssuanceRequest | Promise<IssuanceRequest> | Observable<IssuanceRequest> {
+    throw new Error('Method not implemented.');
+  }
+
   override getAccountBalance(
     id: string,
     request: Request,
@@ -22,9 +30,9 @@ export class LedgerApiImpl extends LedgerApi {
   }
 
   override issueTokens(
-    issueRequest: IssueRequest,
-    request: Request,
-  ): IssueEnvelope | Promise<IssueEnvelope> | Observable<IssueEnvelope> {
+    _issueTokensRequest: IssueTokensRequest,
+    _request: Request,
+  ): Transaction | Promise<Transaction> | Observable<Transaction> {
     throw new Error('Method not implemented.');
   }
 

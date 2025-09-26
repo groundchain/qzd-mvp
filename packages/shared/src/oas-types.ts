@@ -138,7 +138,7 @@ export type paths = {
         };
         get?: never;
         put?: never;
-        /** Issue new QZD tokens to an account. */
+        /** Execute an approved issuance request and credit the beneficiary account. */
         post: operations["issueTokens"];
         delete?: never;
         options?: never;
@@ -225,6 +225,41 @@ export type paths = {
         get: operations["listAdminAlerts"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/issuance-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List issuance requests awaiting validator review. */
+        get: operations["listIssuanceRequests"];
+        put?: never;
+        /** Submit a new issuance request to the validator queue. */
+        post: operations["createIssuanceRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/issuance-requests/{id}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a validator signature for the issuance request. */
+        post: operations["signIssuanceRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -344,6 +379,24 @@ export type components = {
             /** Format: date-time */
             submittedAt: string;
             request: components["schemas"]["IssueRequest"];
+        };
+        /** @description Track validator approvals for a queued issuance. */
+        IssuanceRequest: {
+            id: string;
+            accountId: string;
+            amount: components["schemas"]["MonetaryAmount"];
+            /**
+             * Format: int32
+             * @description Number of validator signatures required for approval.
+             */
+            required: number;
+            /**
+             * Format: int32
+             * @description Number of validator signatures collected so far.
+             */
+            collected: number;
+            /** @enum {string} */
+            status: "pending" | "collecting" | "ready" | "completed";
         };
         RedeemRequest: {
             accountId: string;
@@ -873,37 +926,33 @@ export interface operations {
         requestBody: {
             content: {
                 /** @example {
-                 *       "accountId": "acc_987654321",
-                 *       "amount": {
-                 *         "currency": "QZD",
-                 *         "value": "1000"
-                 *       },
-                 *       "reference": "Treasury mint"
+                 *       "requestId": "ir_000001"
                  *     } */
-                "application/json": components["schemas"]["IssueRequest"];
+                "application/json": {
+                    /** @description Identifier of the approved issuance request. */
+                    requestId: string;
+                };
             };
         };
         responses: {
-            /** @description Issuance request accepted. */
-            202: {
+            /** @description Issuance executed successfully. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     /** @example {
-                     *       "envelopeId": "issue_env_001",
-                     *       "status": "pending",
-                     *       "submittedAt": "2024-05-02T11:15:00Z",
-                     *       "request": {
-                     *         "accountId": "acc_987654321",
-                     *         "amount": {
-                     *           "currency": "QZD",
-                     *           "value": "1000"
-                     *         },
-                     *         "reference": "Treasury mint"
-                     *       }
+                     *       "id": "txn_issuance_001",
+                     *       "accountId": "acc_987654321",
+                     *       "type": "issuance",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "1000"
+                     *       },
+                     *       "status": "posted",
+                     *       "createdAt": "2024-05-02T11:15:00Z"
                      *     } */
-                    "application/json": components["schemas"]["IssueEnvelope"];
+                    "application/json": components["schemas"]["Transaction"];
                 };
             };
             400: components["responses"]["BadRequestError"];
@@ -1149,6 +1198,158 @@ export interface operations {
             };
             401: components["responses"]["UnauthorizedError"];
             403: components["responses"]["ForbiddenError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listIssuanceRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issuance requests retrieved successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "ir_000001",
+                     *           "accountId": "acc_987654321",
+                     *           "amount": {
+                     *             "currency": "QZD",
+                     *             "value": "1000"
+                     *           },
+                     *           "required": 2,
+                     *           "collected": 1,
+                     *           "status": "collecting"
+                     *         },
+                     *         {
+                     *           "id": "ir_000002",
+                     *           "accountId": "acc_222222222",
+                     *           "amount": {
+                     *             "currency": "QZD",
+                     *             "value": "500"
+                     *           },
+                     *           "required": 2,
+                     *           "collected": 2,
+                     *           "status": "ready"
+                     *         }
+                     *       ]
+                     *     } */
+                    "application/json": {
+                        items?: components["schemas"]["IssuanceRequest"][];
+                    };
+                };
+            };
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createIssuanceRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "accountId": "acc_987654321",
+                 *       "amount": {
+                 *         "currency": "QZD",
+                 *         "value": "1000"
+                 *       },
+                 *       "reference": "Treasury mint"
+                 *     } */
+                "application/json": components["schemas"]["IssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Issuance request created successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "id": "ir_000001",
+                     *       "accountId": "acc_987654321",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "1000"
+                     *       },
+                     *       "required": 2,
+                     *       "collected": 0,
+                     *       "status": "pending"
+                     *     } */
+                    "application/json": components["schemas"]["IssuanceRequest"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    signIssuanceRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the issuance request to sign. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "validatorId": "validator-1"
+                 *     } */
+                "application/json": {
+                    /** @description Identifier of the validator providing the signature. */
+                    validatorId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signature recorded successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "id": "ir_000001",
+                     *       "accountId": "acc_987654321",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "1000"
+                     *       },
+                     *       "required": 2,
+                     *       "collected": 1,
+                     *       "status": "collecting"
+                     *     } */
+                    "application/json": components["schemas"]["IssuanceRequest"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
             429: components["responses"]["TooManyRequestsError"];
             500: components["responses"]["InternalServerError"];
         };

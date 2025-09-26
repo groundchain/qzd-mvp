@@ -4,8 +4,7 @@ import type { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { TransactionsApi } from '@qzd/sdk-api/server';
 import type {
-  IssueEnvelope,
-  IssueRequest,
+  IssueTokensRequest,
   ListAccountTransactions200Response,
   RedeemRequest,
   Transaction,
@@ -30,10 +29,10 @@ export class TransactionsApiImpl extends TransactionsApi {
   }
 
   override issueTokens(
-    _issueRequest: IssueRequest,
-    _request: Request,
-  ): IssueEnvelope | Promise<IssueEnvelope> | Observable<IssueEnvelope> {
-    throw new BadRequestException('Issuance is not supported in the demo environment');
+    issueTokensRequest: IssueTokensRequest,
+    request: Request,
+  ): Transaction | Promise<Transaction> | Observable<Transaction> {
+    return this.bank.issueFromRequest(issueTokensRequest.requestId, request);
   }
 
   override listAccountTransactions(
