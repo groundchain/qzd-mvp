@@ -56,9 +56,9 @@ importers:
 
   apps/admin-web:
     dependencies:
-      '@qzd/sdk':
+      '@qzd/sdk-browser':
         specifier: workspace:*
-        version: link:../../packages/sdk
+        version: link:../../packages/sdk-browser
       '@qzd/shared':
         specifier: workspace:*
         version: link:../../packages/shared
