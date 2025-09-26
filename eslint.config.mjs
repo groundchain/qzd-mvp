@@ -4,7 +4,12 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "coverage"] },
+  {
+    ignores: ["dist", "node_modules", "coverage"],
+    linterOptions: {
+      reportUnusedDisableDirectives: false
+    }
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -14,6 +19,14 @@ export default tseslint.config(
         projectService: true,
         tsconfigRootDir: import.meta.dirname
       }
+    }
+  },
+  {
+    files: ["**/src/generated/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-namespace": "off",
+      "eslint/no-unused-disable": "off"
     }
   },
   {
