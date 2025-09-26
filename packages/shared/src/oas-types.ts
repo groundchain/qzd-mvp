@@ -55,6 +55,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/accounts/kyc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit KYC evidence for an existing account.
+         * @description Upload new metadata, documents, or questionnaire answers to advance an account's KYC status. Approved submissions can upgrade the account to FULL status, unlocking higher daily transfer limits.
+         */
+        post: operations["uploadAccountKyc"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/accounts/{id}/balance": {
         parameters: {
             query?: never;
@@ -98,7 +118,10 @@ export type paths = {
         };
         get?: never;
         put?: never;
-        /** Move balances between accounts. */
+        /**
+         * Move balances between accounts.
+         * @description Transfers are limited by the originating account's KYC tier. BASIC accounts may send up to Q5,000 per day while FULL accounts may send up to Q50,000 per day. Requests exceeding these thresholds will be rejected with a LIMIT_EXCEEDED error.
+         */
         post: operations["initiateTransfer"];
         delete?: never;
         options?: never;
@@ -254,11 +277,28 @@ export type components = {
             id: string;
             ownerId: string;
             ownerName?: string;
-            /** @enum {string} */
-            status: "active" | "suspended" | "closed";
+            /**
+             * @description Current account state. Frozen accounts are blocked from initiating transfers until reactivated.
+             * @enum {string}
+             */
+            status: "ACTIVE" | "FROZEN";
+            /**
+             * @description Know Your Customer (KYC) tier that controls daily transfer limits. BASIC accounts may move up to Q5,000 per day while FULL accounts may transfer up to Q50,000 per day.
+             * @enum {string}
+             */
+            kycLevel: "BASIC" | "FULL";
             /** Format: date-time */
             createdAt: string;
             metadata?: {
+                [key: string]: string;
+            };
+        };
+        UploadAccountKycRequest: {
+            accountId: string;
+            /** @enum {string} */
+            kycLevel: "BASIC" | "FULL";
+            /** @description Structured evidence payload such as document references. */
+            metadata: {
                 [key: string]: string;
             };
         };
@@ -285,6 +325,7 @@ export type components = {
                 [key: string]: string;
             };
         };
+        /** @description Transfer instructions count toward an account's daily movement limit. BASIC accounts may submit no more than Q5,000 per 24-hour window while FULL accounts may transfer up to Q50,000. */
         TransferRequest: {
             sourceAccountId: string;
             destinationAccountId: string;
@@ -347,7 +388,8 @@ export type components = {
             createdAt: string;
         };
         Error: {
-            code: string;
+            /** @enum {string} */
+            code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE" | "LIMIT_EXCEEDED" | "ACCOUNT_FROZEN";
             message: string;
             details?: {
                 [key: string]: string;
@@ -497,7 +539,8 @@ export interface operations {
                      *         "ownerId": "usr_123456789",
                      *         "id": "acc_987654321",
                      *         "ownerName": "Alex Merchant",
-                     *         "status": "active",
+                     *         "status": "ACTIVE",
+                     *         "kycLevel": "BASIC",
                      *         "createdAt": "2024-05-01T12:30:00Z"
                      *       },
                      *       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
@@ -601,7 +644,8 @@ export interface operations {
                      *       "id": "acc_987654321",
                      *       "ownerId": "usr_123456789",
                      *       "ownerName": "Northbridge Holdings",
-                     *       "status": "active",
+                     *       "status": "ACTIVE",
+                     *       "kycLevel": "BASIC",
                      *       "createdAt": "2024-05-01T12:30:00Z"
                      *     } */
                     "application/json": components["schemas"]["Account"];
@@ -610,6 +654,45 @@ export interface operations {
             400: components["responses"]["BadRequestError"];
             401: components["responses"]["UnauthorizedError"];
             403: components["responses"]["ForbiddenError"];
+            409: components["responses"]["ConflictError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    uploadAccountKyc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "accountId": "acc_987654321",
+                 *       "kycLevel": "FULL",
+                 *       "metadata": {
+                 *         "documentType": "PASSPORT",
+                 *         "documentNumber": "123456789"
+                 *       }
+                 *     } */
+                "application/json": components["schemas"]["UploadAccountKycRequest"];
+            };
+        };
+        responses: {
+            /** @description Account KYC metadata accepted and account updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
             409: components["responses"]["ConflictError"];
             429: components["responses"]["TooManyRequestsError"];
             500: components["responses"]["InternalServerError"];
@@ -1013,7 +1096,8 @@ export interface operations {
                      *         {
                      *           "id": "val_001",
                      *           "name": "QZD Northern Node",
-                     *           "status": "active",
+                     *           "status": "ACTIVE",
+                     *           "kycLevel": "FULL",
                      *           "endpoint": "https://validator1.qzd.example.com"
                      *         },
                      *         {

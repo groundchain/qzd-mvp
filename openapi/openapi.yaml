@@ -81,7 +81,8 @@ paths:
                   ownerId: "usr_123456789"
                   id: "acc_987654321"
                   ownerName: "Alex Merchant"
-                  status: active
+                  status: ACTIVE
+                  kycLevel: BASIC
                   createdAt: "2024-05-01T12:30:00Z"
                 token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
         '400':
@@ -185,7 +186,8 @@ paths:
                 id: "acc_987654321"
                 ownerId: "usr_123456789"
                 ownerName: "Northbridge Holdings"
-                status: active
+                status: ACTIVE
+                kycLevel: BASIC
                 createdAt: "2024-05-01T12:30:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
@@ -193,6 +195,49 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /accounts/kyc:
+    post:
+      tags:
+        - Accounts
+      operationId: uploadAccountKyc
+      summary: Submit KYC evidence for an existing account.
+      description: >-
+        Upload new metadata, documents, or questionnaire answers to advance an
+        account's KYC status. Approved submissions can upgrade the account to
+        FULL status, unlocking higher daily transfer limits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadAccountKycRequest'
+            example:
+              accountId: "acc_987654321"
+              kycLevel: FULL
+              metadata:
+                documentType: "PASSPORT"
+                documentNumber: "123456789"
+      responses:
+        '200':
+          description: Account KYC metadata accepted and account updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
         '409':
           $ref: '#/components/responses/ConflictError'
         '429':
@@ -311,6 +356,11 @@ paths:
         - Transactions
       operationId: initiateTransfer
       summary: Move balances between accounts.
+      description: >-
+        Transfers are limited by the originating account's KYC tier. BASIC
+        accounts may send up to Q5,000 per day while FULL accounts may send up
+        to Q50,000 per day. Requests exceeding these thresholds will be
+        rejected with a LIMIT_EXCEEDED error.
       requestBody:
         required: true
         content:
@@ -597,7 +647,8 @@ paths:
                 validators:
                   - id: "val_001"
                     name: "QZD Northern Node"
-                    status: active
+                    status: ACTIVE
+                    kycLevel: FULL
                     endpoint: "https://validator1.qzd.example.com"
                   - id: "val_002"
                     name: "QZD Southern Node"
@@ -831,10 +882,21 @@ components:
           type: string
         status:
           type: string
+          description: >-
+            Current account state. Frozen accounts are blocked from initiating
+            transfers until reactivated.
           enum:
-            - active
-            - suspended
-            - closed
+            - ACTIVE
+            - FROZEN
+        kycLevel:
+          type: string
+          description: >-
+            Know Your Customer (KYC) tier that controls daily transfer limits.
+            BASIC accounts may move up to Q5,000 per day while FULL accounts may
+            transfer up to Q50,000 per day.
+          enum:
+            - BASIC
+            - FULL
         createdAt:
           type: string
           format: date-time
@@ -846,7 +908,27 @@ components:
         - id
         - ownerId
         - status
+        - kycLevel
         - createdAt
+    UploadAccountKycRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        kycLevel:
+          type: string
+          enum:
+            - BASIC
+            - FULL
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Structured evidence payload such as document references.
+      required:
+        - accountId
+        - kycLevel
+        - metadata
     Balance:
       type: object
       properties:
@@ -908,6 +990,10 @@ components:
         - createdAt
     TransferRequest:
       type: object
+      description: >-
+        Transfer instructions count toward an account's daily movement limit.
+        BASIC accounts may submit no more than Q5,000 per 24-hour window while
+        FULL accounts may transfer up to Q50,000.
       properties:
         sourceAccountId:
           type: string
@@ -1063,6 +1149,17 @@ components:
       properties:
         code:
           type: string
+          enum:
+            - BAD_REQUEST
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - CONFLICT
+            - TOO_MANY_REQUESTS
+            - INTERNAL_ERROR
+            - SERVICE_UNAVAILABLE
+            - LIMIT_EXCEEDED
+            - ACCOUNT_FROZEN
         message:
           type: string
         details:
