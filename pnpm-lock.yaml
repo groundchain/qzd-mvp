@@ -114,6 +114,9 @@ importers:
       '@noble/hashes':
         specifier: ^1.6.0
         version: 1.8.0
+      '@qzd/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@qzd/sdk-api':
         specifier: workspace:*
         version: link:../../packages/sdk-api

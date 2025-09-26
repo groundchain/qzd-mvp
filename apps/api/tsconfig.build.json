@@ -10,7 +10,9 @@
       "@qzd/shared": ["../../packages/shared/dist/index.d.ts"],
       "@qzd/shared/*": ["../../packages/shared/dist/*.d.ts"],
       "@qzd/sdk-api": ["../../packages/sdk-api/dist/index.d.ts"],
-      "@qzd/sdk-api/*": ["../../packages/sdk-api/dist/*.d.ts"]
+      "@qzd/sdk-api/*": ["../../packages/sdk-api/dist/*.d.ts"],
+      "@qzd/ledger": ["../../packages/ledger/dist/index.d.ts"],
+      "@qzd/ledger/*": ["../../packages/ledger/dist/*.d.ts"]
     }
   },
   "exclude": ["**/*.spec.ts", "**/*.test.ts", "vitest.config.ts"]
