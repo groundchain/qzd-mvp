@@ -355,14 +355,18 @@ export type components = {
             };
         };
         USRemitAcquireQZDRequest: {
-            remitterAccountId: string;
-            beneficiaryAccountId: string;
             usdAmount: components["schemas"]["MonetaryAmount"];
-            purposeCode?: string;
-            complianceDeclarations?: {
-                sourceOfFunds?: string;
-                relationshipToBeneficiary?: string;
-            };
+            /** @description MSISDN of the sender initiating the remittance. */
+            senderPhone: string;
+            /** @description Beneficiary account identifier if known. */
+            receiverAccountId?: string;
+            /** @description Beneficiary phone number when an account identifier is unavailable. */
+            receiverPhone?: string;
+            /**
+             * @description Optional pricing program override for this acquisition.
+             * @enum {string}
+             */
+            scenario?: "DEFAULT" | "TARIFFED" | "SUBSIDIZED";
         };
         QuoteResponse: {
             quoteId: string;
@@ -975,50 +979,35 @@ export interface operations {
         requestBody: {
             content: {
                 /** @example {
-                 *       "remitterAccountId": "acc_444",
-                 *       "beneficiaryAccountId": "acc_555",
                  *       "usdAmount": {
                  *         "currency": "USD",
-                 *         "value": "1500.00"
+                 *         "value": "125.00"
                  *       },
-                 *       "purposeCode": "FAMILY_SUPPORT",
-                 *       "complianceDeclarations": {
-                 *         "sourceOfFunds": "Salary",
-                 *         "relationshipToBeneficiary": "Sibling"
-                 *       }
+                 *       "senderPhone": "+14155551212",
+                 *       "receiverAccountId": "acc_beneficiary_001"
                  *     } */
                 "application/json": components["schemas"]["USRemitAcquireQZDRequest"];
             };
         };
         responses: {
-            /** @description Remittance request accepted. */
+            /** @description QZD issued to the beneficiary account. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     /** @example {
-                     *       "requestId": "remit_req_001",
-                     *       "status": "pending",
-                     *       "quote": {
-                     *         "quoteId": "quote_123",
-                     *         "sellAmount": {
-                     *           "currency": "USD",
-                     *           "value": "1500.00"
-                     *         },
-                     *         "buyAmount": {
-                     *           "currency": "QZD",
-                     *           "value": "1490.00"
-                     *         },
-                     *         "rate": "0.9933",
-                     *         "expiresAt": "2024-05-02T11:40:00Z"
-                     *       }
+                     *       "id": "txn_issuance_001",
+                     *       "accountId": "acc_beneficiary_001",
+                     *       "type": "issuance",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "965.51"
+                     *       },
+                     *       "status": "posted",
+                     *       "createdAt": "2024-05-02T11:40:00Z"
                      *     } */
-                    "application/json": {
-                        requestId?: string;
-                        status?: string;
-                        quote?: components["schemas"]["QuoteResponse"];
-                    };
+                    "application/json": components["schemas"]["Transaction"];
                 };
             };
             400: components["responses"]["BadRequestError"];
@@ -1033,12 +1022,15 @@ export interface operations {
     simulateQuote: {
         parameters: {
             query: {
-                /** @example USD */
-                sellCurrency: string;
-                /** @example 1000.00 */
-                sellAmount: string;
-                /** @example QZD */
-                buyCurrency: string;
+                /** @example 100.00 */
+                usdAmount: string;
+                /**
+                 * @description Pricing program to apply to the remittance quote. Allowed values: DEFAULT,
+                 *     TARIFFED, SUBSIDIZED.
+                 *
+                 * @example DEFAULT
+                 */
+                scenario?: string;
             };
             header?: never;
             path?: never;
@@ -1053,16 +1045,16 @@ export interface operations {
                 };
                 content: {
                     /** @example {
-                     *       "quoteId": "quote_789",
+                     *       "quoteId": "quote_default_100",
                      *       "sellAmount": {
                      *         "currency": "USD",
-                     *         "value": "1000.00"
+                     *         "value": "100.00"
                      *       },
                      *       "buyAmount": {
                      *         "currency": "QZD",
-                     *         "value": "995.00"
+                     *         "value": "772.28"
                      *       },
-                     *       "rate": "0.9950",
+                     *       "rate": "7.7228",
                      *       "expiresAt": "2024-05-02T12:00:00Z"
                      *     } */
                     "application/json": components["schemas"]["QuoteResponse"];
