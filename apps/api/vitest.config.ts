@@ -1,6 +1,21 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const sharedSrcDir = fileURLToPath(new URL('../../packages/shared/src/', import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@qzd\/shared$/, // direct import
+        replacement: fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url))
+      },
+      {
+        find: /^@qzd\/shared\/(.*)$/,
+        replacement: `${sharedSrcDir}$1`
+      }
+    ]
+  },
   test: {
     environment: 'node',
     coverage: {
