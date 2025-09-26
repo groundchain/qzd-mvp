@@ -1,15 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureContractMockServer } from '../../../tests/contract-mock-server';
 
-const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://127.0.0.1:4010';
-
 describe('Browser SDK contract', () => {
+  let baseUrl!: string;
+
   beforeAll(async () => {
-    await ensureContractMockServer();
+    baseUrl = await ensureContractMockServer();
   });
 
   it('provides readiness details from GET /health/ready', async () => {
-    const response = await fetch(`${BASE_URL}/health/ready`);
+    const response = await fetch(`${baseUrl}/health/ready`);
     expect(response.status).toBe(200);
 
     const payload: unknown = await response.json();
@@ -32,7 +32,7 @@ describe('Browser SDK contract', () => {
   });
 
   it('returns example registration payload for POST /auth/register', async () => {
-    const response = await fetch(`${BASE_URL}/auth/register`, {
+    const response = await fetch(`${baseUrl}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

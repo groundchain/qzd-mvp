@@ -2,12 +2,13 @@ import axios from 'axios';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureContractMockServer } from '../../../tests/contract-mock-server';
 
-const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://127.0.0.1:4010';
-const client = axios.create({ baseURL: BASE_URL });
-
 describe('Node SDK contract', () => {
+  let baseUrl!: string;
+  let client!: ReturnType<typeof axios.create>;
+
   beforeAll(async () => {
-    await ensureContractMockServer();
+    baseUrl = await ensureContractMockServer();
+    client = axios.create({ baseURL: baseUrl });
   });
 
   it('returns liveness payload from GET /health/live', async () => {
