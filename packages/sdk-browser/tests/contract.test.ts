@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { ensureContractMockServer } from '../../../tests/contract-mock-server';
 
 const BASE_URL = process.env.CONTRACT_BASE_URL ?? 'http://127.0.0.1:4010';
 
 describe('Browser SDK contract', () => {
+  beforeAll(async () => {
+    await ensureContractMockServer();
+  });
+
   it('provides readiness details from GET /health/ready', async () => {
     const response = await fetch(`${BASE_URL}/health/ready`);
     expect(response.status).toBe(200);
