@@ -520,42 +520,27 @@ paths:
             schema:
               $ref: '#/components/schemas/USRemitAcquireQZDRequest'
             example:
-              remitterAccountId: "acc_444"
-              beneficiaryAccountId: "acc_555"
               usdAmount:
                 currency: "USD"
-                value: "1500.00"
-              purposeCode: "FAMILY_SUPPORT"
-              complianceDeclarations:
-                sourceOfFunds: "Salary"
-                relationshipToBeneficiary: "Sibling"
+                value: "125.00"
+              senderPhone: "+14155551212"
+              receiverAccountId: "acc_beneficiary_001"
       responses:
         '202':
-          description: Remittance request accepted.
+          description: QZD issued to the beneficiary account.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  requestId:
-                    type: string
-                  status:
-                    type: string
-                  quote:
-                    $ref: '#/components/schemas/QuoteResponse'
+                $ref: '#/components/schemas/Transaction'
               example:
-                requestId: "remit_req_001"
-                status: pending
-                quote:
-                  quoteId: "quote_123"
-                  sellAmount:
-                    currency: "USD"
-                    value: "1500.00"
-                  buyAmount:
-                    currency: "QZD"
-                    value: "1490.00"
-                  rate: "0.9933"
-                  expiresAt: "2024-05-02T11:40:00Z"
+                id: "txn_issuance_001"
+                accountId: "acc_beneficiary_001"
+                type: issuance
+                amount:
+                  currency: "QZD"
+                  value: "965.51"
+                status: posted
+                createdAt: "2024-05-02T11:40:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
         '401':
@@ -577,25 +562,22 @@ paths:
       operationId: simulateQuote
       summary: Simulate a quote for acquiring QZD against a fiat amount.
       parameters:
-        - name: sellCurrency
-          in: query
-          required: true
-          schema:
-            type: string
-          example: "USD"
-        - name: sellAmount
+        - name: usdAmount
           in: query
           required: true
           schema:
             type: string
             pattern: "^\\d+(?:\\.\\d+)?$"
-          example: "1000.00"
-        - name: buyCurrency
+          example: "100.00"
+        - name: scenario
           in: query
-          required: true
+          required: false
+          description: |
+            Pricing program to apply to the remittance quote. Allowed values: DEFAULT,
+            TARIFFED, SUBSIDIZED.
           schema:
             type: string
-          example: "QZD"
+          example: DEFAULT
       responses:
         '200':
           description: Quote simulated successfully.
@@ -604,14 +586,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/QuoteResponse'
               example:
-                quoteId: "quote_789"
+                quoteId: "quote_default_100"
                 sellAmount:
                   currency: "USD"
-                  value: "1000.00"
+                  value: "100.00"
                 buyAmount:
                   currency: "QZD"
-                  value: "995.00"
-                rate: "0.9950"
+                  value: "772.28"
+                rate: "7.7228"
                 expiresAt: "2024-05-02T12:00:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
@@ -1067,25 +1049,27 @@ components:
     USRemitAcquireQZDRequest:
       type: object
       properties:
-        remitterAccountId:
-          type: string
-        beneficiaryAccountId:
-          type: string
         usdAmount:
           $ref: '#/components/schemas/MonetaryAmount'
-        purposeCode:
+        senderPhone:
           type: string
-        complianceDeclarations:
-          type: object
-          properties:
-            sourceOfFunds:
-              type: string
-            relationshipToBeneficiary:
-              type: string
+          description: MSISDN of the sender initiating the remittance.
+        receiverAccountId:
+          type: string
+          description: Beneficiary account identifier if known.
+        receiverPhone:
+          type: string
+          description: Beneficiary phone number when an account identifier is unavailable.
+        scenario:
+          type: string
+          description: Optional pricing program override for this acquisition.
+          enum:
+            - DEFAULT
+            - TARIFFED
+            - SUBSIDIZED
       required:
-        - remitterAccountId
-        - beneficiaryAccountId
         - usdAmount
+        - senderPhone
     QuoteResponse:
       type: object
       properties:

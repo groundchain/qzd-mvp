@@ -13,6 +13,14 @@ export default defineConfig({
       {
         find: /^@qzd\/shared\/(.*)$/,
         replacement: `${sharedSrcDir}$1`
+      },
+      {
+        find: /^@qzd\/ledger$/,
+        replacement: fileURLToPath(new URL('../../packages/ledger/src/index.ts', import.meta.url))
+      },
+      {
+        find: /^@qzd\/ledger\/(.*)$/,
+        replacement: fileURLToPath(new URL(`../../packages/ledger/src/$1`, import.meta.url))
       }
     ]
   },

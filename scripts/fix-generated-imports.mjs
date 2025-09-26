@@ -84,7 +84,8 @@ function transform(content, filePath) {
     .replace(/export\s+\*\s+from\s+(['"])(\.{1,2}\/[^'";]+)\1/g, (match, quote, specifier) => {
       const nextSpecifier = ensureJsExtension(specifier, filePath);
       return `export * from ${quote}${nextSpecifier}${quote}`;
-    });
+    })
+    .replace(/&#39;/g, "'");
 }
 
 async function rewriteFetchApiIndex(targetDir) {
