@@ -7,31 +7,31 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./src/index.ts"
     },
     "./browser": {
       "import": "./dist/browser/index.js",
-      "types": "./dist/browser/index.d.ts"
+      "types": "./src/browser/index.ts"
     },
     "./browser/*": {
       "import": "./dist/browser/*.js",
-      "types": "./dist/browser/*.d.ts"
+      "types": "./src/browser/*.ts"
     },
     "./node": {
       "import": "./dist/node/index.js",
-      "types": "./dist/node/index.d.ts"
+      "types": "./src/node/index.ts"
     },
     "./node/*": {
       "import": "./dist/node/*.js",
-      "types": "./dist/node/*.d.ts"
+      "types": "./src/node/*.ts"
     },
     "./server": {
       "import": "./dist/server/index.js",
-      "types": "./dist/server/index.d.ts"
+      "types": "./src/server/index.ts"
     },
     "./server/*": {
       "import": "./dist/server/*.js",
-      "types": "./dist/server/*.d.ts"
+      "types": "./src/server/*.ts"
     }
   },
   "files": ["dist"],
@@ -40,7 +40,7 @@
     "prebuild": "pnpm run generate",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint --no-warn-ignored \"src/**/*.ts\" --ignore-pattern \"src/**/generated/**\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node ../../scripts/ensure-sdk-api-generated.mjs && tsc --noEmit"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
