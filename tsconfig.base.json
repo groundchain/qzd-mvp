@@ -23,6 +23,8 @@
       "@qzd/ledger/*": ["packages/ledger/src/*.ts"],
       "@qzd/sdk": ["packages/sdk/src/index.ts"],
       "@qzd/sdk/*": ["packages/sdk/src/*.ts"],
+      "@qzd/sdk-browser": ["packages/sdk-browser/src/index.ts"],
+      "@qzd/sdk-browser/*": ["packages/sdk-browser/src/*.ts"],
       "@qzd/sdk-api": ["packages/sdk-api/src/index.ts"],
       "@qzd/sdk-api/*": ["packages/sdk-api/src/*"]
     }
