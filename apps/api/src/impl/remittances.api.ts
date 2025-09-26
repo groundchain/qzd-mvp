@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { RemittancesApi } from '@qzd/sdk-api/server';
@@ -8,8 +8,11 @@ import { RemittancesService } from '../remittances.service.js';
 
 @Injectable()
 export class RemittancesApiImpl extends RemittancesApi {
-  constructor(private readonly service: RemittancesService = new RemittancesService()) {
+  private readonly service: RemittancesService;
+
+  constructor(@Optional() service?: RemittancesService) {
     super();
+    this.service = service ?? new RemittancesService();
   }
 
   override acquireQZDForUSRemittance(
