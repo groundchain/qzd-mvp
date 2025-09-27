@@ -351,6 +351,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/sms/inbound": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forward an inbound SMS command for processing. */
+        post: operations["receiveSmsInbound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -526,6 +543,18 @@ export type components = {
             message: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description Inbound SMS payload forwarded from the messaging gateway. */
+        SmsInboundRequest: {
+            /** @description MSISDN of the sender initiating the command. */
+            from: string;
+            /** @description Body of the received SMS message. */
+            text: string;
+        };
+        /** @description Response payload containing the SMS reply text. */
+        SmsInboundResponse: {
+            /** @description Text that should be sent back to the sender. */
+            reply: string;
         };
         Error: {
             /** @enum {string} */
@@ -1676,6 +1705,40 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    receiveSmsInbound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "from": "5025551234",
+                 *       "text": "BAL"
+                 *     } */
+                "application/json": components["schemas"]["SmsInboundRequest"];
+            };
+        };
+        responses: {
+            /** @description SMS command processed successfully. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "reply": "Balance: QZD 1,000.00"
+                     *     } */
+                    "application/json": components["schemas"]["SmsInboundResponse"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
         };
     };
 }

@@ -30,6 +30,8 @@ tags:
     description: Administrative visibility and alert management endpoints.
   - name: Agents
     description: Agent cash-in, cash-out, and voucher reconciliation workflows.
+  - name: Sms
+    description: Inbound SMS command processing and responses.
   - name: Health
     description: Service health and readiness probes.
 paths:
@@ -1054,6 +1056,37 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
       security: []
+  /sms/inbound:
+    post:
+      tags:
+        - Sms
+      operationId: receiveSmsInbound
+      summary: Forward an inbound SMS command for processing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsInboundRequest'
+            example:
+              from: "5025551234"
+              text: "BAL"
+      responses:
+        '200':
+          description: SMS command processed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmsInboundResponse'
+              example:
+                reply: "Balance: QZD 1,000.00"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security: []
 components:
   securitySchemes:
     BearerAuth:
@@ -1524,6 +1557,28 @@ components:
         - severity
         - message
         - createdAt
+    SmsInboundRequest:
+      type: object
+      description: Inbound SMS payload forwarded from the messaging gateway.
+      properties:
+        from:
+          type: string
+          description: MSISDN of the sender initiating the command.
+        text:
+          type: string
+          description: Body of the received SMS message.
+      required:
+        - from
+        - text
+    SmsInboundResponse:
+      type: object
+      description: Response payload containing the SMS reply text.
+      properties:
+        reply:
+          type: string
+          description: Text that should be sent back to the sender.
+      required:
+        - reply
     Error:
       type: object
       properties:
