@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AdminApi, Configuration, type IssuanceRequest } from '@qzd/sdk-browser';
+import {
+  AdminApi,
+  AgentsApi,
+  Configuration,
+  type IssuanceRequest,
+  type MonetaryAmount,
+  type Voucher,
+} from '@qzd/sdk-browser';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const KNOWN_VALIDATORS = ['validator-1', 'validator-2', 'validator-3'] as const;
@@ -17,12 +24,22 @@ function sanitizeBaseUrl(value: string | undefined): string {
   return trimmed.replace(/\/+$/, '');
 }
 
-function formatAmount(amount: IssuanceRequest['amount']): string {
+function formatAmount(amount: MonetaryAmount | undefined | null): string {
+  if (!amount?.value || !amount?.currency) {
+    return '—';
+  }
   return `${amount.value} ${amount.currency}`;
 }
 
 function formatProgress(request: IssuanceRequest): string {
   return `${request.status} (${request.collected}/${request.required})`;
+}
+
+function formatTimestamp(timestamp: Voucher['createdAt'] | Voucher['redeemedAt']): string {
+  if (!timestamp) {
+    return '—';
+  }
+  return timestamp instanceof Date ? timestamp.toISOString() : timestamp;
 }
 
 export default function App() {
@@ -41,6 +58,9 @@ export default function App() {
   const [currencyInput, setCurrencyInput] = useState('QZD');
   const [referenceInput, setReferenceInput] = useState('');
   const [createStatus, setCreateStatus] = useState<AsyncStatus>('idle');
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
+  const [redeemStatus, setRedeemStatus] = useState<AsyncStatus>('idle');
+  const [redeemedVoucher, setRedeemedVoucher] = useState<Voucher | null>(null);
 
   const configuration = useMemo(
     () =>
@@ -52,6 +72,7 @@ export default function App() {
   );
 
   const adminApi = useMemo(() => new AdminApi(configuration), [configuration]);
+  const agentsApi = useMemo(() => new AgentsApi(configuration), [configuration]);
 
   const resetStatus = useCallback((message: string | null) => {
     setStatusMessage(message);
@@ -168,6 +189,37 @@ export default function App() {
     [accountIdInput, adminApi, amountInput, currencyInput, referenceInput, refreshRequests, resetStatus, token],
   );
 
+  const handleRedeemVoucher = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!token) {
+        resetStatus('Provide an access token before redeeming vouchers.');
+        return;
+      }
+
+      const code = voucherCodeInput.trim();
+      if (!code) {
+        resetStatus('Enter a voucher code to redeem.');
+        return;
+      }
+
+      setRedeemStatus('pending');
+      setRedeemedVoucher(null);
+      try {
+        const voucher = await agentsApi.redeemVoucher({ code });
+        setRedeemedVoucher(voucher);
+        setVoucherCodeInput('');
+        resetStatus(`Voucher ${voucher.code} redeemed successfully.`);
+      } catch (error) {
+        console.error('Failed to redeem voucher', error);
+        resetStatus(error instanceof Error ? error.message : 'Unable to redeem voucher.');
+      } finally {
+        setRedeemStatus('idle');
+      }
+    },
+    [agentsApi, resetStatus, token, voucherCodeInput],
+  );
+
   return (
     <main>
       <h1>Issuance Queue</h1>
@@ -195,6 +247,75 @@ export default function App() {
           </label>
           <button type="submit">Save connection</button>
         </form>
+      </section>
+
+      <section>
+        <h2>Voucher redemption</h2>
+        <form onSubmit={handleRedeemVoucher}>
+          <label>
+            Voucher code
+            <input
+              type="text"
+              value={voucherCodeInput}
+              onChange={(event) => setVoucherCodeInput(event.target.value)}
+              placeholder="vch_000001"
+            />
+          </label>
+          <button type="submit" disabled={redeemStatus === 'pending'}>
+            {redeemStatus === 'pending' ? 'Redeeming…' : 'Redeem voucher'}
+          </button>
+        </form>
+        {redeemedVoucher ? (
+          <article>
+            <header>
+              <h3>{redeemedVoucher.code}</h3>
+            </header>
+            <dl>
+              <div>
+                <dt>Amount</dt>
+                <dd>{formatAmount(redeemedVoucher.amount)}</dd>
+              </div>
+              <div>
+                <dt>Fee</dt>
+                <dd>{formatAmount(redeemedVoucher.fee)}</dd>
+              </div>
+              <div>
+                <dt>Total debited</dt>
+                <dd>{formatAmount(redeemedVoucher.totalDebited)}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{redeemedVoucher.status}</dd>
+              </div>
+              <div>
+                <dt>Created at</dt>
+                <dd>{formatTimestamp(redeemedVoucher.createdAt)}</dd>
+              </div>
+              {redeemedVoucher.redeemedAt ? (
+                <div>
+                  <dt>Redeemed at</dt>
+                  <dd>{formatTimestamp(redeemedVoucher.redeemedAt)}</dd>
+                </div>
+              ) : null}
+              {redeemedVoucher.metadata ? (
+                <div>
+                  <dt>Metadata</dt>
+                  <dd>
+                    <ul>
+                      {Object.entries(redeemedVoucher.metadata).map(([key, value]) => (
+                        <li key={key}>
+                          <strong>{key}:</strong> {value}
+                        </li>
+                      ))}
+                    </ul>
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          </article>
+        ) : (
+          <p>No voucher redeemed yet.</p>
+        )}
       </section>
 
       <section>

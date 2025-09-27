@@ -4,6 +4,8 @@ import {
   AccountsApiController,
   AdminApi,
   AdminApiController,
+  AgentsApi,
+  AgentsApiController,
   AuthApi,
   AuthApiController,
   HealthApi,
@@ -22,6 +24,7 @@ type ApiConstructor = abstract new (...args: any[]) => unknown; // eslint-disabl
 const controllerBindings: ReadonlyArray<readonly [ControllerConstructor, ApiConstructor]> = [
   [AccountsApiController, AccountsApi],
   [AdminApiController, AdminApi],
+  [AgentsApiController, AgentsApi],
   [AuthApiController, AuthApi],
   [HealthApiController, HealthApi],
   [LedgerApiController, LedgerApi],

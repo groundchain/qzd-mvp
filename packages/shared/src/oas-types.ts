@@ -163,6 +163,57 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/agents/cashin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept cash-in from an agent and credit their QZD balance. */
+        post: operations["agentCashIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/cashout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert QZD balance into a voucher code for payout. */
+        post: operations["agentCashOut"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/vouchers/{code}/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem an issued voucher code and finalize payout. */
+        post: operations["redeemVoucher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/remit/us/acquire-qzd": {
         parameters: {
             query?: never;
@@ -367,6 +418,18 @@ export type components = {
             amount: components["schemas"]["MonetaryAmount"];
             memo?: string;
         };
+        AgentCashInRequest: {
+            accountId: string;
+            amount: components["schemas"]["MonetaryAmount"];
+            /** @description Optional note describing the cash-in event. */
+            memo?: string;
+        };
+        AgentCashOutRequest: {
+            accountId: string;
+            amount: components["schemas"]["MonetaryAmount"];
+            /** @description Optional note describing the disbursement. */
+            memo?: string;
+        };
         IssueRequest: {
             accountId: string;
             amount: components["schemas"]["MonetaryAmount"];
@@ -384,19 +447,39 @@ export type components = {
         IssuanceRequest: {
             id: string;
             accountId: string;
-            amount: components["schemas"]["MonetaryAmount"];
+            amount?: components["schemas"]["MonetaryAmount"];
             /**
              * Format: int32
              * @description Number of validator signatures required for approval.
              */
-            required: number;
+            required?: number;
             /**
              * Format: int32
              * @description Number of validator signatures collected so far.
              */
-            collected: number;
+            collected?: number;
             /** @enum {string} */
-            status: "pending" | "collecting" | "ready" | "completed";
+            status?: "pending" | "collecting" | "ready" | "completed";
+        };
+        Voucher: {
+            code: string;
+            accountId: string;
+            amount: components["schemas"]["MonetaryAmount"];
+            fee: components["schemas"]["MonetaryAmount"];
+            totalDebited: components["schemas"]["MonetaryAmount"];
+            /** @enum {string} */
+            status: "issued" | "redeemed";
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Timestamp when the voucher was redeemed.
+             */
+            redeemedAt?: string;
+            /** @description Additional context captured during issuance or redemption. */
+            metadata?: {
+                [key: string]: string;
+            };
         };
         RedeemRequest: {
             accountId: string;
@@ -1007,6 +1090,164 @@ export interface operations {
                      *       "createdAt": "2024-05-02T11:30:00Z"
                      *     } */
                     "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    agentCashIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "accountId": "acc_987654321",
+                 *       "amount": {
+                 *         "currency": "QZD",
+                 *         "value": "250.00"
+                 *       },
+                 *       "memo": "Float top-up"
+                 *     } */
+                "application/json": components["schemas"]["AgentCashInRequest"];
+            };
+        };
+        responses: {
+            /** @description Cash-in recorded successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "id": "txn_cash_in_001",
+                     *       "accountId": "acc_987654321",
+                     *       "type": "credit",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "250.00"
+                     *       },
+                     *       "status": "posted",
+                     *       "createdAt": "2024-05-02T12:00:00Z",
+                     *       "metadata": {
+                     *         "memo": "Float top-up"
+                     *       }
+                     *     } */
+                    "application/json": components["schemas"]["Transaction"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    agentCashOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "accountId": "acc_987654321",
+                 *       "amount": {
+                 *         "currency": "QZD",
+                 *         "value": "100.00"
+                 *       },
+                 *       "memo": "Branch disbursement"
+                 *     } */
+                "application/json": components["schemas"]["AgentCashOutRequest"];
+            };
+        };
+        responses: {
+            /** @description Voucher issued for cash out. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "code": "vch_000123",
+                     *       "accountId": "acc_987654321",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "100.00"
+                     *       },
+                     *       "fee": {
+                     *         "currency": "QZD",
+                     *         "value": "0.50"
+                     *       },
+                     *       "totalDebited": {
+                     *         "currency": "QZD",
+                     *         "value": "100.50"
+                     *       },
+                     *       "status": "issued",
+                     *       "createdAt": "2024-05-02T12:05:00Z"
+                     *     } */
+                    "application/json": components["schemas"]["Voucher"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    redeemVoucher: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Voucher code issued during agent cash-out. */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Voucher redeemed successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example {
+                     *       "code": "vch_000123",
+                     *       "accountId": "acc_987654321",
+                     *       "amount": {
+                     *         "currency": "QZD",
+                     *         "value": "100.00"
+                     *       },
+                     *       "fee": {
+                     *         "currency": "QZD",
+                     *         "value": "0.50"
+                     *       },
+                     *       "totalDebited": {
+                     *         "currency": "QZD",
+                     *         "value": "100.50"
+                     *       },
+                     *       "status": "redeemed",
+                     *       "createdAt": "2024-05-02T12:05:00Z",
+                     *       "redeemedAt": "2024-05-02T12:15:00Z"
+                     *     } */
+                    "application/json": components["schemas"]["Voucher"];
                 };
             };
             400: components["responses"]["BadRequestError"];

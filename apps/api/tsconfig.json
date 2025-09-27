@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "preserveSymlinks": true
+    "preserveSymlinks": true,
+    "types": ["node", "supertest"]
   },
   "include": ["src/**/*", "vitest.config.ts"],
   "exclude": ["dist", "node_modules"]
