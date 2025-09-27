@@ -25,6 +25,8 @@ import type {
   Transaction,
   TransferRequest,
   Voucher,
+  SmsInboundRequest,
+  SmsInboundResponse,
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
 
@@ -101,6 +103,7 @@ export class InMemoryBankService {
   private readonly issuanceRequests = new Map<string, IssuanceRequestRecord>();
   private readonly issuanceOrder: string[] = [];
   private readonly vouchers = new Map<string, VoucherRecord>();
+  private readonly smsAccounts = new Map<string, string>();
 
   private userSequence = 1;
   private accountSequence = 1;
@@ -434,6 +437,24 @@ export class InMemoryBankService {
     return this.toVoucher(record);
   }
 
+  receiveSmsInbound(request: SmsInboundRequest, _actor: Request): SmsInboundResponse {
+    void _actor;
+    const msisdn = this.normalizeMsisdn(request.from);
+    const text = request.text?.trim();
+
+    if (!msisdn) {
+      throw new BadRequestException('from is required');
+    }
+    if (!text) {
+      throw new BadRequestException('text is required');
+    }
+
+    const account = this.getOrCreateSmsAccount(msisdn);
+    const reply = this.processSmsCommand(account, msisdn, text);
+
+    return { reply } satisfies SmsInboundResponse;
+  }
+
   initiateTransfer(request: TransferRequest, actor: Request): Transaction {
     const user = this.requireUser(actor);
     const sourceId = request.sourceAccountId?.trim();
@@ -611,6 +632,150 @@ export class InMemoryBankService {
     record.status = 'completed';
 
     return transaction;
+  }
+
+  private processSmsCommand(account: AccountRecord, msisdn: string, text: string): string {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return 'Please send a command. Reply HELP for assistance.';
+    }
+
+    const [commandRaw, ...args] = trimmed.split(/\s+/);
+    const command = commandRaw.toUpperCase();
+
+    switch (command) {
+      case 'BAL':
+      case 'BALANCE':
+        return `Balance: ${this.formatCurrency(account.balance, account.currency)}.`;
+      case 'HELP':
+        return 'Commands: BAL to view balance, SEND <amount> <phone> to transfer.';
+      case 'SEND':
+        return this.handleSmsSend(account, msisdn, args);
+      default:
+        return `Unknown command "${commandRaw}". Reply HELP for a list of commands.`;
+    }
+  }
+
+  private handleSmsSend(account: AccountRecord, senderMsisdn: string, args: string[]): string {
+    if (args.length < 2) {
+      return 'Usage: SEND <amount> <phone> [memo]';
+    }
+
+    const amountRaw = args[0];
+    const destinationRaw = args[1];
+    const memo = args.slice(2).join(' ').trim();
+
+    const amountValue = Number.parseFloat(amountRaw);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      return 'Amount must be a positive number.';
+    }
+
+    const amount = this.round(amountValue);
+    const destinationMsisdn = this.normalizeMsisdn(destinationRaw);
+    if (!destinationMsisdn) {
+      return 'Destination must be a valid phone number.';
+    }
+
+    const currency = account.currency;
+    if (amount > account.balance) {
+      return `Insufficient funds. Balance ${this.formatCurrency(account.balance, currency)}.`;
+    }
+
+    const destinationAccount = this.getOrCreateSmsAccount(destinationMsisdn);
+    if (destinationAccount.id === account.id) {
+      return 'You cannot send funds to your own number.';
+    }
+
+    const createdAt = new Date().toISOString();
+    account.balance = this.round(account.balance - amount);
+    account.updatedAt = createdAt;
+    destinationAccount.balance = this.round(destinationAccount.balance + amount);
+    destinationAccount.updatedAt = createdAt;
+
+    const transactionId = this.buildId('txn', this.transactionSequence++);
+    const metadata: Record<string, string> = {
+      channel: 'sms',
+      senderMsisdn,
+      recipientMsisdn: destinationMsisdn,
+    };
+    if (memo) {
+      metadata.memo = memo;
+    }
+
+    const debitTransaction: Transaction = {
+      id: transactionId,
+      accountId: account.id,
+      counterpartyAccountId: destinationAccount.id,
+      type: 'transfer',
+      status: 'posted',
+      amount: this.monetary(amount, currency),
+      createdAt,
+      metadata,
+    } satisfies Transaction;
+
+    const creditTransaction: Transaction = {
+      ...debitTransaction,
+      id: `${transactionId}_rcv`,
+      accountId: destinationAccount.id,
+      counterpartyAccountId: account.id,
+      amount: this.monetary(amount, destinationAccount.currency),
+      metadata: { ...metadata, direction: 'incoming' },
+    } satisfies Transaction;
+
+    this.prependTransaction(account.id, debitTransaction);
+    this.prependTransaction(destinationAccount.id, creditTransaction);
+
+    return `Sent ${this.formatCurrency(amount, currency)} to ${destinationMsisdn}. New balance ${this.formatCurrency(account.balance, currency)}.`;
+  }
+
+  private getOrCreateSmsAccount(msisdn: string): AccountRecord {
+    const existingId = this.smsAccounts.get(msisdn);
+    if (existingId) {
+      return this.requireAccount(existingId);
+    }
+
+    const accountId = this.buildId('acct', this.accountSequence++);
+    const now = new Date().toISOString();
+    const record: AccountRecord = {
+      id: accountId,
+      ownerId: `sms_${msisdn}`,
+      ownerName: `SMS ${msisdn}`,
+      status: 'ACTIVE',
+      kycLevel: 'BASIC',
+      createdAt: now,
+      currency: DEFAULT_CURRENCY,
+      balance: DEFAULT_BALANCE,
+      updatedAt: now,
+    } satisfies AccountRecord;
+
+    this.accounts.set(accountId, record);
+    this.transactions.set(accountId, []);
+    this.smsAccounts.set(msisdn, accountId);
+
+    return record;
+  }
+
+  private normalizeMsisdn(input?: string): string | undefined {
+    if (typeof input !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    if (!digits) {
+      return undefined;
+    }
+
+    return hasPlus ? `+${digits}` : digits;
+  }
+
+  private formatCurrency(amount: number, currency: string): string {
+    return `${currency} ${amount.toFixed(2)}`;
   }
 
   private requireAccount(accountId: string): AccountRecord {

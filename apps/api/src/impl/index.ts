@@ -6,6 +6,7 @@ import { AuthApiImpl } from './auth.api.js';
 import { HealthApiImpl } from './health.api.js';
 import { LedgerApiImpl } from './ledger.api.js';
 import { RemittancesApiImpl } from './remittances.api.js';
+import { SmsApiImpl } from './sms.api.js';
 import { TransactionsApiImpl } from './transactions.api.js';
 
 export const apiImplementations: ApiImplementations = {
@@ -16,6 +17,7 @@ export const apiImplementations: ApiImplementations = {
   healthApi: HealthApiImpl,
   ledgerApi: LedgerApiImpl,
   remittancesApi: RemittancesApiImpl,
+  smsApi: SmsApiImpl,
   transactionsApi: TransactionsApiImpl,
 };
 
@@ -27,5 +29,6 @@ export {
   HealthApiImpl,
   LedgerApiImpl,
   RemittancesApiImpl,
+  SmsApiImpl,
   TransactionsApiImpl,
 };
