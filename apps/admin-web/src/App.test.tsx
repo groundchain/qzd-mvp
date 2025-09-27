@@ -9,12 +9,23 @@ vi.mock('@qzd/sdk-browser', () => {
     createIssuanceRequest = vi.fn().mockResolvedValue({});
   }
 
+  class MockAgentsApi {
+    redeemVoucher = vi.fn().mockResolvedValue({
+      code: 'vch_test',
+      amount: { currency: 'QZD', value: '0.00' },
+      fee: { currency: 'QZD', value: '0.00' },
+      totalDebited: { currency: 'QZD', value: '0.00' },
+      status: 'issued',
+      createdAt: '2024-01-01T00:00:00Z',
+    });
+  }
+
   class MockConfiguration {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     constructor() {}
   }
 
-  return { AdminApi: MockAdminApi, Configuration: MockConfiguration };
+  return { AdminApi: MockAdminApi, AgentsApi: MockAgentsApi, Configuration: MockConfiguration };
 });
 
 describe('Admin App', () => {
@@ -23,6 +34,7 @@ describe('Admin App', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: /issuance queue/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: /connection/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /voucher redemption/i })).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { level: 2, name: /create issuance request/i }),
     ).toBeInTheDocument();
@@ -34,6 +46,7 @@ describe('Admin App', () => {
 
     expect(screen.getByPlaceholderText('http://localhost:3000')).toHaveValue('http://localhost:3000');
     expect(screen.getByPlaceholderText('Paste bearer token')).toHaveValue('');
+    expect(screen.getByPlaceholderText('vch_000001')).toHaveValue('');
     expect(screen.getByRole('combobox', { name: /validator identity/i })).toHaveDisplayValue('validator-1');
   });
 
@@ -41,5 +54,6 @@ describe('Admin App', () => {
     render(<App />);
 
     expect(screen.getAllByText(/no issuance requests available/i)[0]).toBeInTheDocument();
+    expect(screen.getByText(/no voucher redeemed yet/i)).toBeInTheDocument();
   });
 });

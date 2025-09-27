@@ -28,6 +28,8 @@ tags:
     description: Cross-border remittance flows and related quote operations.
   - name: Admin
     description: Administrative visibility and alert management endpoints.
+  - name: Agents
+    description: Agent cash-in, cash-out, and voucher reconciliation workflows.
   - name: Health
     description: Service health and readiness probes.
 paths:
@@ -494,6 +496,156 @@ paths:
                   value: "500"
                 status: pending
                 createdAt: "2024-05-02T11:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /agents/cashin:
+    post:
+      tags:
+        - Agents
+      operationId: agentCashIn
+      summary: Accept cash-in from an agent and credit their QZD balance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCashInRequest'
+            example:
+              accountId: "acc_987654321"
+              amount:
+                currency: "QZD"
+                value: "250.00"
+              memo: "Float top-up"
+      responses:
+        '201':
+          description: Cash-in recorded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+              example:
+                id: "txn_cash_in_001"
+                accountId: "acc_987654321"
+                type: credit
+                amount:
+                  currency: "QZD"
+                  value: "250.00"
+                status: posted
+                createdAt: "2024-05-02T12:00:00Z"
+                metadata:
+                  memo: "Float top-up"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /agents/cashout:
+    post:
+      tags:
+        - Agents
+      operationId: agentCashOut
+      summary: Convert QZD balance into a voucher code for payout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCashOutRequest'
+            example:
+              accountId: "acc_987654321"
+              amount:
+                currency: "QZD"
+                value: "100.00"
+              memo: "Branch disbursement"
+      responses:
+        '201':
+          description: Voucher issued for cash out.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+              example:
+                code: "vch_000123"
+                accountId: "acc_987654321"
+                amount:
+                  currency: "QZD"
+                  value: "100.00"
+                fee:
+                  currency: "QZD"
+                  value: "0.50"
+                totalDebited:
+                  currency: "QZD"
+                  value: "100.50"
+                status: issued
+                createdAt: "2024-05-02T12:05:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /agents/vouchers/{code}/redeem:
+    post:
+      tags:
+        - Agents
+      operationId: redeemVoucher
+      summary: Redeem an issued voucher code and finalize payout.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Voucher code issued during agent cash-out.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Voucher redeemed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+              example:
+                code: "vch_000123"
+                accountId: "acc_987654321"
+                amount:
+                  currency: "QZD"
+                  value: "100.00"
+                fee:
+                  currency: "QZD"
+                  value: "0.50"
+                totalDebited:
+                  currency: "QZD"
+                  value: "100.50"
+                status: redeemed
+                createdAt: "2024-05-02T12:05:00Z"
+                redeemedAt: "2024-05-02T12:15:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
         '401':
@@ -1137,6 +1289,32 @@ components:
         - sourceAccountId
         - destinationAccountId
         - amount
+    AgentCashInRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        memo:
+          type: string
+          description: Optional note describing the cash-in event.
+      required:
+        - accountId
+        - amount
+    AgentCashOutRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        memo:
+          type: string
+          description: Optional note describing the disbursement.
+      required:
+        - accountId
+        - amount
     IssueRequest:
       type: object
       properties:
@@ -1198,6 +1376,44 @@ components:
       required:
         - id
         - accountId
+    Voucher:
+      type: object
+      properties:
+        code:
+          type: string
+        accountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        fee:
+          $ref: '#/components/schemas/MonetaryAmount'
+        totalDebited:
+          $ref: '#/components/schemas/MonetaryAmount'
+        status:
+          type: string
+          enum:
+            - issued
+            - redeemed
+        createdAt:
+          type: string
+          format: date-time
+        redeemedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the voucher was redeemed.
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional context captured during issuance or redemption.
+      required:
+        - code
+        - accountId
+        - amount
+        - fee
+        - totalDebited
+        - status
+        - createdAt
         - amount
         - required
         - collected
