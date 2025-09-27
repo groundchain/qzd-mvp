@@ -9,6 +9,8 @@ import {
 import { randomUUID, randomBytes } from 'node:crypto';
 import type { Request } from 'express';
 import type {
+  AgentCashInRequest,
+  AgentCashOutRequest,
   Account,
   Balance,
   CreateAccountRequest,
@@ -22,6 +24,7 @@ import type {
   RegisterUserRequest,
   Transaction,
   TransferRequest,
+  Voucher,
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
 
@@ -69,6 +72,20 @@ type IssuanceRequestRecord = {
   reference?: string;
 };
 
+type VoucherStatus = Voucher['status'];
+
+type VoucherRecord = {
+  code: string;
+  accountId: string;
+  currency: string;
+  amount: number;
+  fee: number;
+  status: VoucherStatus;
+  createdAt: string;
+  redeemedAt?: string;
+  metadata: Record<string, string>;
+};
+
 const DEFAULT_BALANCE = 1_000;
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_CURRENCY = 'QZD';
@@ -83,11 +100,13 @@ export class InMemoryBankService {
   private readonly tokens = new Map<string, TokenRecord>();
   private readonly issuanceRequests = new Map<string, IssuanceRequestRecord>();
   private readonly issuanceOrder: string[] = [];
+  private readonly vouchers = new Map<string, VoucherRecord>();
 
   private userSequence = 1;
   private accountSequence = 1;
   private transactionSequence = 1;
   private issuanceSequence = 1;
+  private voucherSequence = 1;
 
   registerUser(request: RegisterUserRequest): RegisterUser201Response {
     const email = request.email?.trim().toLowerCase();
@@ -244,6 +263,175 @@ export class InMemoryBankService {
       items: slice,
       nextCursor: nextCursor ?? null,
     } satisfies ListAccountTransactions200Response;
+  }
+
+  agentCashIn(request: AgentCashInRequest, actor: Request): Transaction {
+    const user = this.requireUser(actor);
+    const accountId = request.accountId?.trim();
+    const amountValue = request.amount?.value?.trim();
+
+    if (!accountId || !amountValue) {
+      throw new BadRequestException('accountId and amount are required');
+    }
+
+    const account = this.requireAccount(accountId);
+    if (account.ownerId !== user.id) {
+      throw new ForbiddenException('You do not have access to this account');
+    }
+
+    const currency = request.amount?.currency?.trim() || account.currency;
+    if (currency !== account.currency) {
+      throw new BadRequestException('Currency mismatch with account');
+    }
+
+    const amount = this.parsePositiveAmount(amountValue);
+    const createdAt = new Date().toISOString();
+
+    account.balance = this.round(account.balance + amount);
+    account.updatedAt = createdAt;
+
+    const memo = request.memo?.trim();
+    const metadata: Record<string, string> = {};
+    if (memo) {
+      metadata.memo = memo;
+    }
+
+    const transaction: Transaction = {
+      id: this.buildId('txn', this.transactionSequence++),
+      accountId: account.id,
+      type: 'credit',
+      status: 'posted',
+      amount: this.monetary(amount, currency),
+      createdAt,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    } satisfies Transaction;
+
+    this.prependTransaction(account.id, transaction);
+
+    return transaction;
+  }
+
+  agentCashOut(request: AgentCashOutRequest, actor: Request): Voucher {
+    const user = this.requireUser(actor);
+    const accountId = request.accountId?.trim();
+    const amountValue = request.amount?.value?.trim();
+
+    if (!accountId || !amountValue) {
+      throw new BadRequestException('accountId and amount are required');
+    }
+
+    const account = this.requireAccount(accountId);
+    if (account.ownerId !== user.id) {
+      throw new ForbiddenException('You do not have access to this account');
+    }
+
+    const currency = request.amount?.currency?.trim() || account.currency;
+    if (currency !== account.currency) {
+      throw new BadRequestException('Currency mismatch with account');
+    }
+
+    const amount = this.parsePositiveAmount(amountValue);
+    const fee = this.round(amount * 0.005);
+    const totalDebited = this.round(amount + fee);
+    if (account.balance < totalDebited) {
+      throw new BadRequestException('Insufficient funds');
+    }
+
+    const createdAt = new Date().toISOString();
+    account.balance = this.round(account.balance - totalDebited);
+    account.updatedAt = createdAt;
+
+    const code = this.generateVoucherCode();
+    const memo = request.memo?.trim();
+    const transactionMetadata: Record<string, string> = {
+      voucherCode: code,
+      feeValue: fee.toFixed(2),
+      feeCurrency: currency,
+    };
+    if (memo) {
+      transactionMetadata.memo = memo;
+    }
+
+    const transaction: Transaction = {
+      id: this.buildId('txn', this.transactionSequence++),
+      accountId: account.id,
+      type: 'debit',
+      status: 'posted',
+      amount: this.monetary(totalDebited, currency),
+      createdAt,
+      metadata: transactionMetadata,
+    } satisfies Transaction;
+
+    this.prependTransaction(account.id, transaction);
+
+    const voucherMetadata: Record<string, string> = {
+      feeValue: fee.toFixed(2),
+      feeCurrency: currency,
+    };
+    if (memo) {
+      voucherMetadata.memo = memo;
+    }
+
+    const record: VoucherRecord = {
+      code,
+      accountId: account.id,
+      currency,
+      amount,
+      fee,
+      status: 'issued',
+      createdAt,
+      metadata: voucherMetadata,
+    } satisfies VoucherRecord;
+
+    this.vouchers.set(code, record);
+
+    return this.toVoucher(record);
+  }
+
+  redeemVoucher(code: string, actor: Request): Voucher {
+    this.requireUser(actor);
+    const normalizedCode = code?.trim();
+    if (!normalizedCode) {
+      throw new BadRequestException('code is required');
+    }
+
+    const record = this.requireVoucher(normalizedCode);
+    if (record.status === 'redeemed') {
+      throw new ConflictException('Voucher already redeemed');
+    }
+
+    const redeemedAt = new Date().toISOString();
+    record.status = 'redeemed';
+    record.redeemedAt = redeemedAt;
+
+    const account = this.requireAccount(record.accountId);
+    const redemptionMetadata: Record<string, string> = {
+      voucherCode: record.code,
+    };
+    if (record.metadata.memo) {
+      redemptionMetadata.memo = record.metadata.memo;
+    }
+    if (record.metadata.feeValue) {
+      redemptionMetadata.feeValue = record.metadata.feeValue;
+    }
+    if (record.metadata.feeCurrency) {
+      redemptionMetadata.feeCurrency = record.metadata.feeCurrency;
+    }
+    redemptionMetadata.redemptionEvent = 'voucher_redeemed';
+
+    const transaction: Transaction = {
+      id: this.buildId('txn', this.transactionSequence++),
+      accountId: account.id,
+      type: 'redemption',
+      status: 'posted',
+      amount: this.monetary(record.amount, record.currency),
+      createdAt: redeemedAt,
+      metadata: redemptionMetadata,
+    } satisfies Transaction;
+
+    this.prependTransaction(account.id, transaction);
+
+    return this.toVoucher(record);
   }
 
   initiateTransfer(request: TransferRequest, actor: Request): Transaction {
@@ -465,6 +653,14 @@ export class InMemoryBankService {
     return record;
   }
 
+  private requireVoucher(code: string): VoucherRecord {
+    const voucher = this.vouchers.get(code);
+    if (!voucher) {
+      throw new NotFoundException('Voucher not found');
+    }
+    return voucher;
+  }
+
   private issueToken(userId: string): string {
     const token = this.generateToken();
     this.tokens.set(token, { token, userId, expiresAt: Date.now() + TOKEN_TTL_MS });
@@ -476,6 +672,10 @@ export class InMemoryBankService {
       return `tok_${randomUUID()}`;
     }
     return `tok_${randomBytes(16).toString('hex')}`;
+  }
+
+  private generateVoucherCode(): string {
+    return this.buildId('vch', this.voucherSequence++);
   }
 
   private toAccount(account: AccountRecord): Account {
@@ -498,6 +698,21 @@ export class InMemoryBankService {
       total: this.monetary(account.balance, account.currency),
       updatedAt: account.updatedAt,
     } satisfies Balance;
+  }
+
+  private toVoucher(record: VoucherRecord): Voucher {
+    const metadata = Object.keys(record.metadata).length > 0 ? { ...record.metadata } : undefined;
+    return {
+      code: record.code,
+      accountId: record.accountId,
+      amount: this.monetary(record.amount, record.currency),
+      fee: this.monetary(record.fee, record.currency),
+      totalDebited: this.monetary(this.round(record.amount + record.fee), record.currency),
+      status: record.status,
+      createdAt: record.createdAt,
+      redeemedAt: record.redeemedAt,
+      metadata,
+    } satisfies Voucher;
   }
 
   private monetary(amount: number, currency: string): MonetaryAmount {
