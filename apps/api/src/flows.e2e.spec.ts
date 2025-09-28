@@ -6,11 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
-import {
-  DEV_SIGNING_KEYPAIR,
-  createSignaturePayload,
-  serializeBody,
-} from './request-security.js';
+import { createSignaturePayload, serializeBody } from './request-security.js';
+
+const DEV_SIGNING_PRIVATE_KEY_HEX =
+  '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
+const DEV_SIGNING_PUBLIC_KEY_HEX = bytesToHex(
+  ed25519.getPublicKey(hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)),
+);
 
 type SecurityOverrides = {
   idempotencyKey?: string;
@@ -40,7 +42,7 @@ function buildSecurityHeaders(
     serializedBody,
   });
   const signature = bytesToHex(
-    ed25519.sign(payload, hexToBytes(DEV_SIGNING_KEYPAIR.privateKey)),
+    ed25519.sign(payload, hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)),
   );
   return { idempotencyKey, nonce, signature };
 }
@@ -85,6 +87,8 @@ describe('Wallet flows', () => {
   let server: ReturnType<INestApplication['getHttpServer']>;
 
   beforeAll(async () => {
+    process.env.QZD_REQUEST_SIGNING_PUBLIC_KEY = DEV_SIGNING_PUBLIC_KEY_HEX;
+
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -96,6 +100,7 @@ describe('Wallet flows', () => {
 
   afterAll(async () => {
     await app.close();
+    delete process.env.QZD_REQUEST_SIGNING_PUBLIC_KEY;
   });
 
   it('registers, logs in, loads balance, sends transfer, and lists transactions', async () => {

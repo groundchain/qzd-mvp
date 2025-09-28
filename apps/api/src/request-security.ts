@@ -5,16 +5,28 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { createHash } from 'node:crypto';
-import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
+import { hexToBytes } from '@noble/curves/abstract/utils';
 import { ed25519 } from '@noble/curves/ed25519';
 
 const IDEMPOTENCY_HEADER = 'idempotency-key';
 const NONCE_HEADER = 'x-qzd-nonce';
 const SIGNATURE_HEADER = 'x-qzd-signature';
 
-const DEV_SIGNING_PRIVATE_KEY_HEX = '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
-const DEV_SIGNING_PUBLIC_KEY_HEX = bytesToHex(ed25519.getPublicKey(hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)));
-const DEV_SIGNING_PUBLIC_KEY_BYTES = hexToBytes(DEV_SIGNING_PUBLIC_KEY_HEX);
+const DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX =
+  '855ccfa13e665195273601418ba69eae333ff5ef6a7123738247871e5d4732a8';
+
+const HEX_PATTERN = /^([0-9a-fA-F]{2})+$/;
+
+function decodeHex(value: string, errorFactory: () => Error): Uint8Array {
+  if (!HEX_PATTERN.test(value)) {
+    throw errorFactory();
+  }
+  return hexToBytes(value);
+}
+
+interface RequestSecurityOptions {
+  publicKeyHex?: string;
+}
 
 export interface SignatureComponents {
   method: string;
@@ -52,14 +64,25 @@ export function createSignaturePayload({
   return new TextEncoder().encode(canonical);
 }
 
-export const DEV_SIGNING_KEYPAIR = {
-  privateKey: DEV_SIGNING_PRIVATE_KEY_HEX,
-  publicKey: DEV_SIGNING_PUBLIC_KEY_HEX,
-} as const;
-
 export class RequestSecurityManager {
   private readonly usedNonces = new Set<string>();
   private readonly idempotencyRecords = new Map<string, IdempotencyRecord>();
+  private readonly publicKeyBytes: Uint8Array;
+
+  constructor(options: RequestSecurityOptions = {}) {
+    const publicKeyHex =
+      options.publicKeyHex ??
+      process.env.QZD_REQUEST_SIGNING_PUBLIC_KEY ??
+      DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX;
+
+    this.publicKeyBytes = decodeHex(
+      publicKeyHex,
+      () =>
+        new Error(
+          'QZD_REQUEST_SIGNING_PUBLIC_KEY must be a hex-encoded string representing an Ed25519 public key.',
+        ),
+    );
+  }
 
   validateMutation(request: Request, body: unknown): ValidatedMutationContext {
     const method = this.normalizeMethod(request);
@@ -72,7 +95,7 @@ export class RequestSecurityManager {
     const serializedBody = serializeBody(body);
     const payload = createSignaturePayload({ method, path, idempotencyKey, nonce, serializedBody });
 
-    const isValid = ed25519.verify(signatureBytes, payload, DEV_SIGNING_PUBLIC_KEY_BYTES);
+    const isValid = ed25519.verify(signatureBytes, payload, this.publicKeyBytes);
     if (!isValid) {
       throw new UnauthorizedException({
         code: 'INVALID_SIGNATURE',
@@ -148,10 +171,7 @@ export class RequestSecurityManager {
   }
 
   private decodeHex(value: string, message: string): Uint8Array {
-    if (!/^([0-9a-fA-F]{2})+$/.test(value)) {
-      throw new BadRequestException(message);
-    }
-    return hexToBytes(value);
+    return decodeHex(value, () => new BadRequestException(message));
   }
 
   private hash(serialized: string): string {
