@@ -842,12 +842,35 @@ paths:
                 alerts:
                   - id: "alert_001"
                     severity: high
-                    message: "Validator quorum degradation detected."
-                    createdAt: "2024-05-02T09:20:00Z"
+                    rule: structuring
+                    ts: "2024-05-02T09:20:00Z"
+                    details:
+                      accountId: "acc_123"
+                      windowMinutes: 10
+                      transferCount: 4
                   - id: "alert_002"
                     severity: medium
-                    message: "Delayed settlement from correspondent bank."
-                    createdAt: "2024-05-02T10:05:00Z"
+                    rule: velocity
+                    ts: "2024-05-02T10:05:00Z"
+                    details:
+                      accountId: "acc_456"
+                      transferCount: 7
+  /admin/alerts/{id}/ack:
+    post:
+      tags:
+        - Admin
+      operationId: acknowledgeAdminAlert
+      summary: Acknowledge and clear an administrative alert.
+      x-controller-http-code: 204
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Alert acknowledged successfully.
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '403':
@@ -1580,16 +1603,19 @@ components:
             - low
             - medium
             - high
-        message:
+        rule:
           type: string
-        createdAt:
+        ts:
           type: string
           format: date-time
+        details:
+          type: object
+          additionalProperties: {}
       required:
         - id
         - severity
-        - message
-        - createdAt
+        - rule
+        - ts
     SmsInboundRequest:
       type: object
       description: Inbound SMS payload forwarded from the messaging gateway.

@@ -30,9 +30,17 @@ export class AdminApiImpl extends AdminApi {
   }
 
   override listAdminAlerts(
-    _request: Request,
+    request: Request,
   ): ListAdminAlerts200Response | Promise<ListAdminAlerts200Response> | Observable<ListAdminAlerts200Response> {
-    return { alerts: [] } satisfies ListAdminAlerts200Response;
+    const alerts = this.bank.listAdminAlerts(request);
+    return { alerts } satisfies ListAdminAlerts200Response;
+  }
+
+  override acknowledgeAdminAlert(
+    id: string,
+    request: Request,
+  ): void | Promise<void> | Observable<void> {
+    this.bank.acknowledgeAlert(id, request);
   }
 
   override listIssuanceRequests(

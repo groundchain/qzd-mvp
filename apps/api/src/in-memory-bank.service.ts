@@ -12,6 +12,7 @@ import type {
   AgentCashInRequest,
   AgentCashOutRequest,
   Account,
+  Alert,
   Balance,
   CreateAccountRequest,
   IssueRequest,
@@ -91,10 +92,40 @@ type VoucherRecord = {
   metadata: Record<string, string>;
 };
 
+type AlertSeverity = Alert['severity'];
+
+type AlertRecord = {
+  id: string;
+  severity: AlertSeverity;
+  rule: string;
+  ts: string;
+  details: Record<string, unknown>;
+  acknowledged: boolean;
+  key: string;
+};
+
+type TransferEvent = {
+  amount: number;
+  timestamp: number;
+};
+
+type AccountCreationEvent = {
+  accountId: string;
+  timestamp: number;
+};
+
 const DEFAULT_BALANCE = 1_000;
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 const DEFAULT_CURRENCY = 'QZD';
 const ISSUANCE_SIGNATURE_THRESHOLD = 2;
+const STRUCTURING_THRESHOLD = 100;
+const STRUCTURING_MARGIN = 5;
+const STRUCTURING_COUNT = 3;
+const STRUCTURING_WINDOW_MS = 15 * 60 * 1000;
+const VELOCITY_COUNT = 5;
+const VELOCITY_WINDOW_MS = 2 * 60 * 1000;
+const NEW_ACCOUNT_THRESHOLD = 5;
+const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class InMemoryBankService {
@@ -108,12 +139,18 @@ export class InMemoryBankService {
   private readonly vouchers = new Map<string, VoucherRecord>();
   private readonly smsAccounts = new Map<string, string>();
   private readonly security = new RequestSecurityManager();
+  private readonly alerts = new Map<string, AlertRecord>();
+  private readonly alertOrder: string[] = [];
+  private readonly activeAlertKeys = new Set<string>();
+  private readonly transferEvents = new Map<string, TransferEvent[]>();
+  private readonly accountCreationEvents: AccountCreationEvent[] = [];
 
   private userSequence = 1;
   private accountSequence = 1;
   private transactionSequence = 1;
   private issuanceSequence = 1;
   private voucherSequence = 1;
+  private alertSequence = 1;
 
   registerUser(request: RegisterUserRequest, actor: Request): RegisterUser201Response {
     const context = this.security.validateMutation(actor, request);
@@ -158,6 +195,8 @@ export class InMemoryBankService {
       this.usersById.set(userId, user);
       this.accounts.set(accountId, account);
       this.transactions.set(accountId, []);
+
+      this.recordAccountCreation(accountId, createdAt);
 
       const token = this.issueToken(userId);
 
@@ -217,6 +256,8 @@ export class InMemoryBankService {
 
       this.accounts.set(accountId, account);
       this.transactions.set(accountId, []);
+
+      this.recordAccountCreation(accountId, createdAt);
 
       return this.toAccount(account);
     });
@@ -462,6 +503,37 @@ export class InMemoryBankService {
     });
   }
 
+  listAdminAlerts(actor: Request): Alert[] {
+    this.requireUser(actor);
+    return this.alertOrder
+      .map((id) => this.alerts.get(id))
+      .filter((record): record is AlertRecord => {
+        if (!record) {
+          return false;
+        }
+        return !record.acknowledged;
+      })
+      .map((record) => this.toAlert(record));
+  }
+
+  acknowledgeAlert(id: string, actor: Request): void {
+    const requestLike = actor as Partial<Request> & { body?: unknown };
+    const context = this.security.validateMutation(actor, requestLike.body);
+    this.requireUser(actor);
+    this.security.applyIdempotency(context, () => {
+      const normalizedId = id?.trim();
+      if (!normalizedId) {
+        throw new BadRequestException('id is required');
+      }
+
+      const record = this.requireAlert(normalizedId);
+      if (!record.acknowledged) {
+        record.acknowledged = true;
+        this.activeAlertKeys.delete(record.key);
+      }
+    });
+  }
+
   receiveSmsInbound(request: SmsInboundRequest, actor: Request): SmsInboundResponse {
     const context = this.security.validateMutation(actor, request);
     return this.security.applyIdempotency(context, () => {
@@ -542,6 +614,8 @@ export class InMemoryBankService {
         counterpartyAccountId: sourceAccount.id,
         amount: this.monetary(amount, currency),
       });
+
+      this.recordTransferActivity(sourceAccount.id, amount, createdAt);
 
       return transaction;
     });
@@ -852,6 +926,143 @@ export class InMemoryBankService {
     const record = this.issuanceRequests.get(id);
     if (!record) {
       throw new NotFoundException('Issuance request not found');
+    }
+    return record;
+  }
+
+  private recordTransferActivity(accountId: string, amount: number, createdAtIso: string): void {
+    const timestamp = Date.parse(createdAtIso);
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    const retentionWindow = Math.max(STRUCTURING_WINDOW_MS, VELOCITY_WINDOW_MS);
+    const events = this.transferEvents.get(accountId) ?? [];
+    events.push({ amount, timestamp });
+
+    while (events.length > 0 && timestamp - events[0]!.timestamp > retentionWindow) {
+      events.shift();
+    }
+
+    this.transferEvents.set(accountId, events);
+
+    this.evaluateStructuring(accountId, events, timestamp);
+    this.evaluateVelocity(accountId, events, timestamp);
+  }
+
+  private evaluateStructuring(accountId: string, events: TransferEvent[], now: number): void {
+    const recent = events.filter((event) => now - event.timestamp <= STRUCTURING_WINDOW_MS);
+    const suspicious = recent.filter(
+      (event) =>
+        event.amount < STRUCTURING_THRESHOLD &&
+        event.amount >= STRUCTURING_THRESHOLD - STRUCTURING_MARGIN,
+    );
+
+    if (suspicious.length >= STRUCTURING_COUNT) {
+      const totalValue = suspicious.reduce((sum, event) => sum + event.amount, 0);
+      this.maybeRaiseAlert(
+        'structuring',
+        'high',
+        now,
+        {
+          accountId,
+          transferCount: suspicious.length,
+          totalValue: this.round(totalValue),
+          windowMinutes: Math.ceil(STRUCTURING_WINDOW_MS / 60000),
+        },
+        `structuring:${accountId}`,
+      );
+    }
+  }
+
+  private evaluateVelocity(accountId: string, events: TransferEvent[], now: number): void {
+    const recent = events.filter((event) => now - event.timestamp <= VELOCITY_WINDOW_MS);
+    if (recent.length >= VELOCITY_COUNT) {
+      this.maybeRaiseAlert(
+        'velocity',
+        'medium',
+        now,
+        {
+          accountId,
+          transferCount: recent.length,
+          windowMinutes: Math.ceil(VELOCITY_WINDOW_MS / 60000),
+        },
+        `velocity:${accountId}`,
+      );
+    }
+  }
+
+  private recordAccountCreation(accountId: string, createdAtIso: string): void {
+    const timestamp = Date.parse(createdAtIso);
+    if (!Number.isFinite(timestamp)) {
+      return;
+    }
+
+    this.accountCreationEvents.push({ accountId, timestamp });
+    const windowStart = timestamp - NEW_ACCOUNT_WINDOW_MS;
+    while (this.accountCreationEvents.length > 0 && this.accountCreationEvents[0]!.timestamp < windowStart) {
+      this.accountCreationEvents.shift();
+    }
+
+    if (this.accountCreationEvents.length >= NEW_ACCOUNT_THRESHOLD) {
+      this.maybeRaiseAlert(
+        'new_account_burst',
+        'medium',
+        timestamp,
+        {
+          accountIds: this.accountCreationEvents.map((event) => event.accountId),
+          count: this.accountCreationEvents.length,
+          windowMinutes: Math.ceil(NEW_ACCOUNT_WINDOW_MS / 60000),
+        },
+        'new_account_burst',
+      );
+    }
+  }
+
+  private maybeRaiseAlert(
+    rule: string,
+    severity: AlertSeverity,
+    timestampMs: number,
+    details: Record<string, unknown>,
+    key: string,
+  ): void {
+    if (this.activeAlertKeys.has(key)) {
+      return;
+    }
+
+    const id = this.buildId('alert', this.alertSequence++);
+    const ts = new Date(timestampMs).toISOString();
+    const normalizedDetails = { ...details };
+    const record: AlertRecord = {
+      id,
+      severity,
+      rule,
+      ts,
+      details: normalizedDetails,
+      acknowledged: false,
+      key,
+    };
+
+    this.alerts.set(id, record);
+    this.alertOrder.unshift(id);
+    this.activeAlertKeys.add(key);
+  }
+
+  private toAlert(record: AlertRecord): Alert {
+    const details = Object.keys(record.details).length > 0 ? { ...record.details } : undefined;
+    return {
+      id: record.id,
+      severity: record.severity,
+      rule: record.rule,
+      ts: record.ts,
+      details,
+    } satisfies Alert;
+  }
+
+  private requireAlert(id: string): AlertRecord {
+    const record = this.alerts.get(id);
+    if (!record) {
+      throw new NotFoundException('Alert not found');
     }
     return record;
   }
