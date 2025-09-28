@@ -21,6 +21,7 @@ export class AgentsApiImpl extends AgentsApi {
   }
 
   override agentCashIn(
+    _idempotencyKey: string,
     agentCashInRequest: AgentCashInRequest,
     request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
@@ -28,6 +29,7 @@ export class AgentsApiImpl extends AgentsApi {
   }
 
   override agentCashOut(
+    _idempotencyKey: string,
     agentCashOutRequest: AgentCashOutRequest,
     request: Request,
   ): Voucher | Promise<Voucher> | Observable<Voucher> {
@@ -36,6 +38,7 @@ export class AgentsApiImpl extends AgentsApi {
 
   override redeemVoucher(
     code: string,
+    _idempotencyKey: string,
     request: Request,
   ): Voucher | Promise<Voucher> | Observable<Voucher> {
     return this.bank.redeemVoucher(code, request);

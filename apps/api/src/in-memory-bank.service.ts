@@ -16,12 +16,14 @@ import type {
   CreateAccountRequest,
   IssueRequest,
   IssuanceRequest,
+  IssueTokensRequest,
   ListAccountTransactions200Response,
   LoginUser200Response,
   LoginUserRequest,
   MonetaryAmount,
   RegisterUser201Response,
   RegisterUserRequest,
+  SignIssuanceRequestRequest,
   Transaction,
   TransferRequest,
   Voucher,
@@ -29,6 +31,7 @@ import type {
   SmsInboundResponse,
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
+import { RequestSecurityManager } from './request-security.js';
 
 type AccountStatus = Account['status'];
 type KycLevel = Account['kycLevel'];
@@ -104,6 +107,7 @@ export class InMemoryBankService {
   private readonly issuanceOrder: string[] = [];
   private readonly vouchers = new Map<string, VoucherRecord>();
   private readonly smsAccounts = new Map<string, string>();
+  private readonly security = new RequestSecurityManager();
 
   private userSequence = 1;
   private accountSequence = 1;
@@ -111,122 +115,134 @@ export class InMemoryBankService {
   private issuanceSequence = 1;
   private voucherSequence = 1;
 
-  registerUser(request: RegisterUserRequest): RegisterUser201Response {
-    const email = request.email?.trim().toLowerCase();
-    const password = request.password?.trim();
-    const fullName = request.fullName?.trim();
+  registerUser(request: RegisterUserRequest, actor: Request): RegisterUser201Response {
+    const context = this.security.validateMutation(actor, request);
+    return this.security.applyIdempotency(context, () => {
+      const email = request.email?.trim().toLowerCase();
+      const password = request.password?.trim();
+      const fullName = request.fullName?.trim();
 
-    if (!email || !password || !fullName) {
-      throw new BadRequestException('email, password, and fullName are required');
-    }
+      if (!email || !password || !fullName) {
+        throw new BadRequestException('email, password, and fullName are required');
+      }
 
-    if (this.usersByEmail.has(email)) {
-      throw new ConflictException('An account with this email already exists');
-    }
+      if (this.usersByEmail.has(email)) {
+        throw new ConflictException('An account with this email already exists');
+      }
 
-    const userId = this.buildId('usr', this.userSequence++);
-    const accountId = this.buildId('acct', this.accountSequence++);
-    const createdAt = new Date().toISOString();
+      const userId = this.buildId('usr', this.userSequence++);
+      const accountId = this.buildId('acct', this.accountSequence++);
+      const createdAt = new Date().toISOString();
 
-    const user: UserRecord = {
-      id: userId,
-      email,
-      password,
-      fullName,
-      accountId,
-    };
+      const user: UserRecord = {
+        id: userId,
+        email,
+        password,
+        fullName,
+        accountId,
+      };
 
-    const account: AccountRecord = {
-      id: accountId,
-      ownerId: userId,
-      ownerName: fullName,
-      status: 'ACTIVE',
-      kycLevel: 'BASIC',
-      createdAt,
-      currency: DEFAULT_CURRENCY,
-      balance: DEFAULT_BALANCE,
-      updatedAt: createdAt,
-    };
+      const account: AccountRecord = {
+        id: accountId,
+        ownerId: userId,
+        ownerName: fullName,
+        status: 'ACTIVE',
+        kycLevel: 'BASIC',
+        createdAt,
+        currency: DEFAULT_CURRENCY,
+        balance: DEFAULT_BALANCE,
+        updatedAt: createdAt,
+      };
 
-    this.usersByEmail.set(email, user);
-    this.usersById.set(userId, user);
-    this.accounts.set(accountId, account);
-    this.transactions.set(accountId, []);
+      this.usersByEmail.set(email, user);
+      this.usersById.set(userId, user);
+      this.accounts.set(accountId, account);
+      this.transactions.set(accountId, []);
 
-    const token = this.issueToken(userId);
+      const token = this.issueToken(userId);
 
-    return {
-      userId,
-      account: this.toAccount(account),
-      token,
-    } satisfies RegisterUser201Response;
+      return {
+        userId,
+        account: this.toAccount(account),
+        token,
+      } satisfies RegisterUser201Response;
+    });
   }
 
-  loginUser(request: LoginUserRequest): LoginUser200Response {
-    const email = request.email?.trim().toLowerCase();
-    const password = request.password?.trim();
+  loginUser(request: LoginUserRequest, actor: Request): LoginUser200Response {
+    const context = this.security.validateMutation(actor, request);
+    return this.security.applyIdempotency(context, () => {
+      const email = request.email?.trim().toLowerCase();
+      const password = request.password?.trim();
 
-    if (!email || !password) {
-      throw new BadRequestException('email and password are required');
-    }
+      if (!email || !password) {
+        throw new BadRequestException('email and password are required');
+      }
 
-    const user = this.usersByEmail.get(email);
-    if (!user || user.password !== password) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+      const user = this.usersByEmail.get(email);
+      if (!user || user.password !== password) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
 
-    const token = this.issueToken(user.id);
-    return {
-      token,
-      expiresIn: TOKEN_TTL_MS / 1000,
-    } satisfies LoginUser200Response;
+      const token = this.issueToken(user.id);
+      return {
+        token,
+        expiresIn: TOKEN_TTL_MS / 1000,
+      } satisfies LoginUser200Response;
+    });
   }
 
   createAccount(request: CreateAccountRequest, actor: Request): Account {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const ownerName = request.displayName?.trim() || user.fullName;
-    const status: AccountStatus = 'ACTIVE';
-    const kycLevel: KycLevel = 'BASIC';
+    return this.security.applyIdempotency(context, () => {
+      const ownerName = request.displayName?.trim() || user.fullName;
+      const status: AccountStatus = 'ACTIVE';
+      const kycLevel: KycLevel = 'BASIC';
 
-    const accountId = this.buildId('acct', this.accountSequence++);
-    const createdAt = new Date().toISOString();
+      const accountId = this.buildId('acct', this.accountSequence++);
+      const createdAt = new Date().toISOString();
 
-    const account: AccountRecord = {
-      id: accountId,
-      ownerId: user.id,
-      ownerName,
-      status,
-      kycLevel,
-      createdAt,
-      currency: DEFAULT_CURRENCY,
-      balance: 0,
-      updatedAt: createdAt,
-    };
+      const account: AccountRecord = {
+        id: accountId,
+        ownerId: user.id,
+        ownerName,
+        status,
+        kycLevel,
+        createdAt,
+        currency: DEFAULT_CURRENCY,
+        balance: 0,
+        updatedAt: createdAt,
+      };
 
-    this.accounts.set(accountId, account);
-    this.transactions.set(accountId, []);
+      this.accounts.set(accountId, account);
+      this.transactions.set(accountId, []);
 
-    return this.toAccount(account);
+      return this.toAccount(account);
+    });
   }
 
   updateAccountKyc(request: UploadAccountKycRequest, actor: Request): Account {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const accountId = request.accountId?.trim();
-    const kycLevel = request.kycLevel;
+    return this.security.applyIdempotency(context, () => {
+      const accountId = request.accountId?.trim();
+      const kycLevel = request.kycLevel;
 
-    if (!accountId || !kycLevel) {
-      throw new BadRequestException('accountId and kycLevel are required');
-    }
+      if (!accountId || !kycLevel) {
+        throw new BadRequestException('accountId and kycLevel are required');
+      }
 
-    const account = this.requireAccount(accountId);
-    if (account.ownerId !== user.id) {
-      throw new ForbiddenException('You do not have access to this account');
-    }
+      const account = this.requireAccount(accountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
 
-    account.kycLevel = kycLevel;
-    account.updatedAt = new Date().toISOString();
+      account.kycLevel = kycLevel;
+      account.updatedAt = new Date().toISOString();
 
-    return this.toAccount(account);
+      return this.toAccount(account);
+    });
   }
 
   getAccountBalance(accountId: string, actor: Request): Balance {
@@ -269,292 +285,309 @@ export class InMemoryBankService {
   }
 
   agentCashIn(request: AgentCashInRequest, actor: Request): Transaction {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const accountId = request.accountId?.trim();
-    const amountValue = request.amount?.value?.trim();
+    return this.security.applyIdempotency(context, () => {
+      const accountId = request.accountId?.trim();
+      const amountValue = request.amount?.value?.trim();
 
-    if (!accountId || !amountValue) {
-      throw new BadRequestException('accountId and amount are required');
-    }
+      if (!accountId || !amountValue) {
+        throw new BadRequestException('accountId and amount are required');
+      }
 
-    const account = this.requireAccount(accountId);
-    if (account.ownerId !== user.id) {
-      throw new ForbiddenException('You do not have access to this account');
-    }
+      const account = this.requireAccount(accountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
 
-    const currency = request.amount?.currency?.trim() || account.currency;
-    if (currency !== account.currency) {
-      throw new BadRequestException('Currency mismatch with account');
-    }
+      const currency = request.amount?.currency?.trim() || account.currency;
+      if (currency !== account.currency) {
+        throw new BadRequestException('Currency mismatch with account');
+      }
 
-    const amount = this.parsePositiveAmount(amountValue);
-    const createdAt = new Date().toISOString();
+      const amount = this.parsePositiveAmount(amountValue);
+      const createdAt = new Date().toISOString();
 
-    account.balance = this.round(account.balance + amount);
-    account.updatedAt = createdAt;
+      account.balance = this.round(account.balance + amount);
+      account.updatedAt = createdAt;
 
-    const memo = request.memo?.trim();
-    const metadata: Record<string, string> = {};
-    if (memo) {
-      metadata.memo = memo;
-    }
+      const memo = request.memo?.trim();
+      const metadata: Record<string, string> = {};
+      if (memo) {
+        metadata.memo = memo;
+      }
 
-    const transaction: Transaction = {
-      id: this.buildId('txn', this.transactionSequence++),
-      accountId: account.id,
-      type: 'credit',
-      status: 'posted',
-      amount: this.monetary(amount, currency),
-      createdAt,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-    } satisfies Transaction;
+      const transaction: Transaction = {
+        id: this.buildId('txn', this.transactionSequence++),
+        accountId: account.id,
+        type: 'credit',
+        status: 'posted',
+        amount: this.monetary(amount, currency),
+        createdAt,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      } satisfies Transaction;
 
-    this.prependTransaction(account.id, transaction);
+      this.prependTransaction(account.id, transaction);
 
-    return transaction;
+      return transaction;
+    });
   }
 
   agentCashOut(request: AgentCashOutRequest, actor: Request): Voucher {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const accountId = request.accountId?.trim();
-    const amountValue = request.amount?.value?.trim();
+    return this.security.applyIdempotency(context, () => {
+      const accountId = request.accountId?.trim();
+      const amountValue = request.amount?.value?.trim();
 
-    if (!accountId || !amountValue) {
-      throw new BadRequestException('accountId and amount are required');
-    }
+      if (!accountId || !amountValue) {
+        throw new BadRequestException('accountId and amount are required');
+      }
 
-    const account = this.requireAccount(accountId);
-    if (account.ownerId !== user.id) {
-      throw new ForbiddenException('You do not have access to this account');
-    }
+      const account = this.requireAccount(accountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
 
-    const currency = request.amount?.currency?.trim() || account.currency;
-    if (currency !== account.currency) {
-      throw new BadRequestException('Currency mismatch with account');
-    }
+      const currency = request.amount?.currency?.trim() || account.currency;
+      if (currency !== account.currency) {
+        throw new BadRequestException('Currency mismatch with account');
+      }
 
-    const amount = this.parsePositiveAmount(amountValue);
-    const fee = this.round(amount * 0.005);
-    const totalDebited = this.round(amount + fee);
-    if (account.balance < totalDebited) {
-      throw new BadRequestException('Insufficient funds');
-    }
+      const amount = this.parsePositiveAmount(amountValue);
+      const fee = this.round(amount * 0.005);
+      const totalDebited = this.round(amount + fee);
+      if (account.balance < totalDebited) {
+        throw new BadRequestException('Insufficient funds');
+      }
 
-    const createdAt = new Date().toISOString();
-    account.balance = this.round(account.balance - totalDebited);
-    account.updatedAt = createdAt;
+      const createdAt = new Date().toISOString();
+      account.balance = this.round(account.balance - totalDebited);
+      account.updatedAt = createdAt;
 
-    const code = this.generateVoucherCode();
-    const memo = request.memo?.trim();
-    const transactionMetadata: Record<string, string> = {
-      voucherCode: code,
-      feeValue: fee.toFixed(2),
-      feeCurrency: currency,
-    };
-    if (memo) {
-      transactionMetadata.memo = memo;
-    }
+      const code = this.generateVoucherCode();
+      const memo = request.memo?.trim();
+      const transactionMetadata: Record<string, string> = {
+        voucherCode: code,
+        feeValue: fee.toFixed(2),
+        feeCurrency: currency,
+      };
+      if (memo) {
+        transactionMetadata.memo = memo;
+      }
 
-    const transaction: Transaction = {
-      id: this.buildId('txn', this.transactionSequence++),
-      accountId: account.id,
-      type: 'debit',
-      status: 'posted',
-      amount: this.monetary(totalDebited, currency),
-      createdAt,
-      metadata: transactionMetadata,
-    } satisfies Transaction;
+      const transaction: Transaction = {
+        id: this.buildId('txn', this.transactionSequence++),
+        accountId: account.id,
+        type: 'debit',
+        status: 'posted',
+        amount: this.monetary(totalDebited, currency),
+        createdAt,
+        metadata: transactionMetadata,
+      } satisfies Transaction;
 
-    this.prependTransaction(account.id, transaction);
+      this.prependTransaction(account.id, transaction);
 
-    const voucherMetadata: Record<string, string> = {
-      feeValue: fee.toFixed(2),
-      feeCurrency: currency,
-    };
-    if (memo) {
-      voucherMetadata.memo = memo;
-    }
+      const voucherMetadata: Record<string, string> = {
+        feeValue: fee.toFixed(2),
+        feeCurrency: currency,
+      };
+      if (memo) {
+        voucherMetadata.memo = memo;
+      }
 
-    const record: VoucherRecord = {
-      code,
-      accountId: account.id,
-      currency,
-      amount,
-      fee,
-      status: 'issued',
-      createdAt,
-      metadata: voucherMetadata,
-    } satisfies VoucherRecord;
+      const record: VoucherRecord = {
+        code,
+        accountId: account.id,
+        currency,
+        amount,
+        fee,
+        status: 'issued',
+        createdAt,
+        metadata: voucherMetadata,
+      } satisfies VoucherRecord;
 
-    this.vouchers.set(code, record);
+      this.vouchers.set(code, record);
 
-    return this.toVoucher(record);
+      return this.toVoucher(record);
+    });
   }
 
   redeemVoucher(code: string, actor: Request): Voucher {
+    const context = this.security.validateMutation(actor, undefined);
     this.requireUser(actor);
-    const normalizedCode = code?.trim();
-    if (!normalizedCode) {
-      throw new BadRequestException('code is required');
-    }
+    return this.security.applyIdempotency(context, () => {
+      const normalizedCode = code?.trim();
+      if (!normalizedCode) {
+        throw new BadRequestException('code is required');
+      }
 
-    const record = this.requireVoucher(normalizedCode);
-    if (record.status === 'redeemed') {
-      throw new ConflictException('Voucher already redeemed');
-    }
+      const record = this.requireVoucher(normalizedCode);
+      if (record.status === 'redeemed') {
+        throw new ConflictException('Voucher already redeemed');
+      }
 
-    const redeemedAt = new Date().toISOString();
-    record.status = 'redeemed';
-    record.redeemedAt = redeemedAt;
+      const redeemedAt = new Date().toISOString();
+      record.status = 'redeemed';
+      record.redeemedAt = redeemedAt;
 
-    const account = this.requireAccount(record.accountId);
-    const redemptionMetadata: Record<string, string> = {
-      voucherCode: record.code,
-    };
-    if (record.metadata.memo) {
-      redemptionMetadata.memo = record.metadata.memo;
-    }
-    if (record.metadata.feeValue) {
-      redemptionMetadata.feeValue = record.metadata.feeValue;
-    }
-    if (record.metadata.feeCurrency) {
-      redemptionMetadata.feeCurrency = record.metadata.feeCurrency;
-    }
-    redemptionMetadata.redemptionEvent = 'voucher_redeemed';
+      const account = this.requireAccount(record.accountId);
+      const redemptionMetadata: Record<string, string> = {
+        voucherCode: record.code,
+      };
+      if (record.metadata.memo) {
+        redemptionMetadata.memo = record.metadata.memo;
+      }
+      if (record.metadata.feeValue) {
+        redemptionMetadata.feeValue = record.metadata.feeValue;
+      }
+      if (record.metadata.feeCurrency) {
+        redemptionMetadata.feeCurrency = record.metadata.feeCurrency;
+      }
+      redemptionMetadata.redemptionEvent = 'voucher_redeemed';
 
-    const transaction: Transaction = {
-      id: this.buildId('txn', this.transactionSequence++),
-      accountId: account.id,
-      type: 'redemption',
-      status: 'posted',
-      amount: this.monetary(record.amount, record.currency),
-      createdAt: redeemedAt,
-      metadata: redemptionMetadata,
-    } satisfies Transaction;
+      const transaction: Transaction = {
+        id: this.buildId('txn', this.transactionSequence++),
+        accountId: account.id,
+        type: 'redemption',
+        status: 'posted',
+        amount: this.monetary(record.amount, record.currency),
+        createdAt: redeemedAt,
+        metadata: redemptionMetadata,
+      } satisfies Transaction;
 
-    this.prependTransaction(account.id, transaction);
+      this.prependTransaction(account.id, transaction);
 
-    return this.toVoucher(record);
+      return this.toVoucher(record);
+    });
   }
 
-  receiveSmsInbound(request: SmsInboundRequest, _actor: Request): SmsInboundResponse {
-    void _actor;
-    const msisdn = this.normalizeMsisdn(request.from);
-    const text = request.text?.trim();
+  receiveSmsInbound(request: SmsInboundRequest, actor: Request): SmsInboundResponse {
+    const context = this.security.validateMutation(actor, request);
+    return this.security.applyIdempotency(context, () => {
+      const msisdn = this.normalizeMsisdn(request.from);
+      const text = request.text?.trim();
 
-    if (!msisdn) {
-      throw new BadRequestException('from is required');
-    }
-    if (!text) {
-      throw new BadRequestException('text is required');
-    }
+      if (!msisdn) {
+        throw new BadRequestException('from is required');
+      }
+      if (!text) {
+        throw new BadRequestException('text is required');
+      }
 
-    const account = this.getOrCreateSmsAccount(msisdn);
-    const reply = this.processSmsCommand(account, msisdn, text);
+      const account = this.getOrCreateSmsAccount(msisdn);
+      const reply = this.processSmsCommand(account, msisdn, text);
 
-    return { reply } satisfies SmsInboundResponse;
+      return { reply } satisfies SmsInboundResponse;
+    });
   }
 
   initiateTransfer(request: TransferRequest, actor: Request): Transaction {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const sourceId = request.sourceAccountId?.trim();
-    const destinationId = request.destinationAccountId?.trim();
-    const amountValue = request.amount?.value?.trim();
-    const currency = request.amount?.currency?.trim() || DEFAULT_CURRENCY;
+    return this.security.applyIdempotency(context, () => {
+      const sourceId = request.sourceAccountId?.trim();
+      const destinationId = request.destinationAccountId?.trim();
+      const amountValue = request.amount?.value?.trim();
+      const currency = request.amount?.currency?.trim() || DEFAULT_CURRENCY;
 
-    if (!sourceId || !destinationId || !amountValue) {
-      throw new BadRequestException('sourceAccountId, destinationAccountId, and amount are required');
-    }
+      if (!sourceId || !destinationId || !amountValue) {
+        throw new BadRequestException('sourceAccountId, destinationAccountId, and amount are required');
+      }
 
-    const amount = Number.parseFloat(amountValue);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('amount must be a positive decimal string');
-    }
+      const amount = Number.parseFloat(amountValue);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new BadRequestException('amount must be a positive decimal string');
+      }
 
-    const sourceAccount = this.requireAccount(sourceId);
-    if (sourceAccount.ownerId !== user.id) {
-      throw new ForbiddenException('Transfers are limited to your accounts');
-    }
+      const sourceAccount = this.requireAccount(sourceId);
+      if (sourceAccount.ownerId !== user.id) {
+        throw new ForbiddenException('Transfers are limited to your accounts');
+      }
 
-    if (sourceAccount.currency !== currency) {
-      throw new BadRequestException('Currency mismatch with source account');
-    }
+      if (sourceAccount.currency !== currency) {
+        throw new BadRequestException('Currency mismatch with source account');
+      }
 
-    if (sourceAccount.balance < amount) {
-      throw new BadRequestException('Insufficient funds');
-    }
+      if (sourceAccount.balance < amount) {
+        throw new BadRequestException('Insufficient funds');
+      }
 
-    const destinationAccount = this.getOrCreateExternalAccount(destinationId, currency);
-    const createdAt = new Date().toISOString();
-    const transactionId = this.buildId('txn', this.transactionSequence++);
+      const destinationAccount = this.getOrCreateExternalAccount(destinationId, currency);
+      const createdAt = new Date().toISOString();
+      const transactionId = this.buildId('txn', this.transactionSequence++);
 
-    sourceAccount.balance = this.round(sourceAccount.balance - amount);
-    sourceAccount.updatedAt = createdAt;
-    destinationAccount.balance = this.round(destinationAccount.balance + amount);
-    destinationAccount.updatedAt = createdAt;
+      sourceAccount.balance = this.round(sourceAccount.balance - amount);
+      sourceAccount.updatedAt = createdAt;
+      destinationAccount.balance = this.round(destinationAccount.balance + amount);
+      destinationAccount.updatedAt = createdAt;
 
-    const memo = request.memo?.trim();
-    const transaction: Transaction = {
-      id: transactionId,
-      accountId: sourceAccount.id,
-      counterpartyAccountId: destinationAccount.id,
-      type: 'transfer',
-      status: 'posted',
-      amount: this.monetary(amount, currency),
-      createdAt,
-      metadata: memo ? { memo } : undefined,
-    } satisfies Transaction;
+      const memo = request.memo?.trim();
+      const transaction: Transaction = {
+        id: transactionId,
+        accountId: sourceAccount.id,
+        counterpartyAccountId: destinationAccount.id,
+        type: 'transfer',
+        status: 'posted',
+        amount: this.monetary(amount, currency),
+        createdAt,
+        metadata: memo ? { memo } : undefined,
+      } satisfies Transaction;
 
-    this.prependTransaction(sourceAccount.id, transaction);
-    this.prependTransaction(destinationAccount.id, {
-      ...transaction,
-      id: `${transactionId}_rcv`,
-      accountId: destinationAccount.id,
-      counterpartyAccountId: sourceAccount.id,
-      amount: this.monetary(amount, currency),
+      this.prependTransaction(sourceAccount.id, transaction);
+      this.prependTransaction(destinationAccount.id, {
+        ...transaction,
+        id: `${transactionId}_rcv`,
+        accountId: destinationAccount.id,
+        counterpartyAccountId: sourceAccount.id,
+        amount: this.monetary(amount, currency),
+      });
+
+      return transaction;
     });
-
-    return transaction;
   }
 
   createIssuanceRequest(request: IssueRequest, actor: Request): IssuanceRequest {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const accountId = request.accountId?.trim();
-    const amountValue = request.amount?.value?.trim();
+    return this.security.applyIdempotency(context, () => {
+      const accountId = request.accountId?.trim();
+      const amountValue = request.amount?.value?.trim();
 
-    if (!accountId || !amountValue) {
-      throw new BadRequestException('accountId and amount are required');
-    }
+      if (!accountId || !amountValue) {
+        throw new BadRequestException('accountId and amount are required');
+      }
 
-    const account = this.requireAccount(accountId);
-    if (account.ownerId !== user.id) {
-      throw new ForbiddenException('You do not have access to this account');
-    }
+      const account = this.requireAccount(accountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
 
-    const currency = request.amount?.currency?.trim() || account.currency;
-    if (currency !== account.currency) {
-      throw new BadRequestException('Currency mismatch with account');
-    }
+      const currency = request.amount?.currency?.trim() || account.currency;
+      if (currency !== account.currency) {
+        throw new BadRequestException('Currency mismatch with account');
+      }
 
-    const amount = this.parsePositiveAmount(amountValue);
-    const reference = request.reference?.trim() || undefined;
+      const amount = this.parsePositiveAmount(amountValue);
+      const reference = request.reference?.trim() || undefined;
 
-    const id = this.buildId('ir', this.issuanceSequence++);
-    const record: IssuanceRequestRecord = {
-      id,
-      accountId,
-      currency,
-      amount,
-      required: ISSUANCE_SIGNATURE_THRESHOLD,
-      collected: new Set(),
-      status: 'pending',
-      reference,
-    } satisfies IssuanceRequestRecord;
+      const id = this.buildId('ir', this.issuanceSequence++);
+      const record: IssuanceRequestRecord = {
+        id,
+        accountId,
+        currency,
+        amount,
+        required: ISSUANCE_SIGNATURE_THRESHOLD,
+        collected: new Set(),
+        status: 'pending',
+        reference,
+      } satisfies IssuanceRequestRecord;
 
-    this.issuanceRequests.set(id, record);
-    this.issuanceOrder.unshift(id);
+      this.issuanceRequests.set(id, record);
+      this.issuanceOrder.unshift(id);
 
-    return this.toIssuanceRequest(record);
+      return this.toIssuanceRequest(record);
+    });
   }
 
   listIssuanceRequests(actor: Request): IssuanceRequest[] {
@@ -564,74 +597,79 @@ export class InMemoryBankService {
     );
   }
 
-  signIssuanceRequest(id: string, validatorId: string, actor: Request): IssuanceRequest {
+  signIssuanceRequest(id: string, request: SignIssuanceRequestRequest, actor: Request): IssuanceRequest {
+    const context = this.security.validateMutation(actor, request);
     this.requireUser(actor);
+    return this.security.applyIdempotency(context, () => {
+      const normalizedId = id?.trim();
+      const normalizedValidator = request.validatorId?.trim();
+      if (!normalizedId || !normalizedValidator) {
+        throw new BadRequestException('id and validatorId are required');
+      }
 
-    const normalizedId = id?.trim();
-    const normalizedValidator = validatorId?.trim();
-    if (!normalizedId || !normalizedValidator) {
-      throw new BadRequestException('id and validatorId are required');
-    }
+      const record = this.requireIssuanceRequest(normalizedId);
+      if (record.status === 'completed') {
+        throw new ConflictException('Issuance request already completed');
+      }
+      if (record.collected.has(normalizedValidator)) {
+        throw new ConflictException('Validator has already signed this request');
+      }
 
-    const record = this.requireIssuanceRequest(normalizedId);
-    if (record.status === 'completed') {
-      throw new ConflictException('Issuance request already completed');
-    }
-    if (record.collected.has(normalizedValidator)) {
-      throw new ConflictException('Validator has already signed this request');
-    }
+      record.collected.add(normalizedValidator);
+      this.updateIssuanceStatus(record);
 
-    record.collected.add(normalizedValidator);
-    this.updateIssuanceStatus(record);
-
-    return this.toIssuanceRequest(record);
+      return this.toIssuanceRequest(record);
+    });
   }
 
-  issueFromRequest(requestId: string, actor: Request): Transaction {
+  issueFromRequest(request: IssueTokensRequest, actor: Request): Transaction {
+    const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    const normalizedId = requestId?.trim();
-    if (!normalizedId) {
-      throw new BadRequestException('requestId is required');
-    }
+    return this.security.applyIdempotency(context, () => {
+      const normalizedId = request.requestId?.trim();
+      if (!normalizedId) {
+        throw new BadRequestException('requestId is required');
+      }
 
-    const record = this.requireIssuanceRequest(normalizedId);
-    if (record.status === 'completed') {
-      throw new ConflictException('Issuance request already completed');
-    }
-    if (record.collected.size < record.required) {
-      throw new BadRequestException('Issuance request is not approved');
-    }
+      const record = this.requireIssuanceRequest(normalizedId);
+      if (record.status === 'completed') {
+        throw new ConflictException('Issuance request already completed');
+      }
+      if (record.collected.size < record.required) {
+        throw new BadRequestException('Issuance request is not approved');
+      }
 
-    const account = this.requireAccount(record.accountId);
-    if (account.ownerId !== user.id) {
-      throw new ForbiddenException('You do not have access to this account');
-    }
+      const account = this.requireAccount(record.accountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
 
-    const createdAt = new Date().toISOString();
-    account.balance = this.round(account.balance + record.amount);
-    account.updatedAt = createdAt;
+      const createdAt = new Date().toISOString();
+      account.balance = this.round(account.balance + record.amount);
+      account.updatedAt = createdAt;
 
-    const transactionId = this.buildId('txn', this.transactionSequence++);
-    const metadata: Record<string, string> = { requestId: record.id };
-    if (record.reference) {
-      metadata.reference = record.reference;
-    }
+      const transactionId = this.buildId('txn', this.transactionSequence++);
+      const metadata: Record<string, string> = { requestId: record.id };
+      if (record.reference) {
+        metadata.reference = record.reference;
+      }
 
-    const transaction: Transaction = {
-      id: transactionId,
-      accountId: account.id,
-      type: 'issuance',
-      status: 'posted',
-      amount: this.monetary(record.amount, record.currency),
-      createdAt,
-      metadata,
-    } satisfies Transaction;
+      const transaction: Transaction = {
+        id: transactionId,
+        accountId: account.id,
+        type: 'issuance',
+        status: 'posted',
+        amount: this.monetary(record.amount, record.currency),
+        createdAt,
+        metadata,
+      } satisfies Transaction;
 
-    this.prependTransaction(account.id, transaction);
+      this.prependTransaction(account.id, transaction);
 
-    record.status = 'completed';
+      record.status = 'completed';
 
-    return transaction;
+      return transaction;
+    });
   }
 
   private processSmsCommand(account: AccountRecord, msisdn: string, text: string): string {

@@ -19,6 +19,14 @@ type QuoteScenario = (typeof QUOTE_SCENARIOS)[number];
 
 type AsyncStatus = 'idle' | 'pending';
 
+function createIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `idem-${crypto.randomUUID()}`;
+  }
+  const randomSuffix = Math.random().toString(16).slice(2);
+  return `idem-${Date.now()}-${randomSuffix}`;
+}
+
 function sanitizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -140,6 +148,7 @@ export default function App() {
 
       try {
         const response = await authApi.registerUser({
+          idempotencyKey: createIdempotencyKey(),
           registerUserRequest: { email, password, fullName },
         });
 
@@ -176,7 +185,10 @@ export default function App() {
       }
 
       try {
-        const response = await authApi.loginUser({ loginUserRequest: { email, password } });
+        const response = await authApi.loginUser({
+          idempotencyKey: createIdempotencyKey(),
+          loginUserRequest: { email, password },
+        });
         const sessionToken = response.token ?? null;
         if (!sessionToken) {
           resetStatus('Login response did not include a session token.');
@@ -230,6 +242,7 @@ export default function App() {
       setTransferStatus('pending');
       try {
         await transactionsApi.initiateTransfer({
+          idempotencyKey: createIdempotencyKey(),
           transferRequest: {
             sourceAccountId: accountId,
             destinationAccountId: destination,

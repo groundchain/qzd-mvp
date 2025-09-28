@@ -41,6 +41,8 @@ paths:
         - Auth
       operationId: registerUser
       summary: Register a new customer and provision an associated account.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -106,6 +108,8 @@ paths:
         - Auth
       operationId: loginUser
       summary: Authenticate an existing user and issue a JWT session token.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -157,6 +161,8 @@ paths:
         - Accounts
       operationId: createAccount
       summary: Create a new remittance ledger account.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -211,6 +217,8 @@ paths:
         - Accounts
       operationId: uploadAccountKyc
       summary: Submit KYC evidence for an existing account.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       description: >-
         Upload new metadata, documents, or questionnaire answers to advance an
         account's KYC status. Approved submissions can upgrade the account to
@@ -365,6 +373,8 @@ paths:
         accounts may send up to Q5,000 per day while FULL accounts may send up
         to Q50,000 per day. Requests exceeding these thresholds will be
         rejected with a LIMIT_EXCEEDED error.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -416,6 +426,8 @@ paths:
         - Ledger
       operationId: issueTokens
       summary: Execute an approved issuance request and credit the beneficiary account.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -467,6 +479,8 @@ paths:
         - Ledger
       operationId: redeemTokens
       summary: Redeem QZD tokens for fiat settlement.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -518,6 +532,8 @@ paths:
         - Agents
       operationId: agentCashIn
       summary: Accept cash-in from an agent and credit their QZD balance.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -566,6 +582,8 @@ paths:
         - Agents
       operationId: agentCashOut
       summary: Convert QZD balance into a voucher code for payout.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -626,6 +644,7 @@ paths:
           description: Voucher code issued during agent cash-out.
           schema:
             type: string
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       responses:
         '201':
           description: Voucher redeemed successfully.
@@ -668,6 +687,8 @@ paths:
         - Remittances
       operationId: acquireQZDForUSRemittance
       summary: Initiate a US remittance flow that acquires QZD liquidity.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -885,6 +906,8 @@ paths:
         - Ledger
       operationId: createIssuanceRequest
       summary: Submit a new issuance request to the validator queue.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -938,6 +961,7 @@ paths:
           schema:
             type: string
           description: Identifier of the issuance request to sign.
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -1062,6 +1086,8 @@ paths:
         - Sms
       operationId: receiveSmsInbound
       summary: Forward an inbound SMS command for processing.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       requestBody:
         required: true
         content:
@@ -1099,6 +1125,13 @@ components:
       in: path
       required: true
       description: Unique account identifier.
+      schema:
+        type: string
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique key to guarantee idempotent handling of POST requests.
       schema:
         type: string
   responses:
@@ -1595,6 +1628,8 @@ components:
             - SERVICE_UNAVAILABLE
             - LIMIT_EXCEEDED
             - ACCOUNT_FROZEN
+            - INVALID_SIGNATURE
+            - REPLAY_DETECTED
         message:
           type: string
         details:
