@@ -16,6 +16,7 @@ import type {
 @Injectable()
 export class LedgerApiImpl extends LedgerApi {
   override createIssuanceRequest(
+    _idempotencyKey: string,
     _issueRequest: IssueRequest,
     _request: Request,
   ): IssuanceRequest | Promise<IssuanceRequest> | Observable<IssuanceRequest> {
@@ -30,6 +31,7 @@ export class LedgerApiImpl extends LedgerApi {
   }
 
   override issueTokens(
+    _idempotencyKey: string,
     _issueTokensRequest: IssueTokensRequest,
     _request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
@@ -43,6 +45,7 @@ export class LedgerApiImpl extends LedgerApi {
   }
 
   override redeemTokens(
+    _idempotencyKey: string,
     redeemRequest: RedeemRequest,
     request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {

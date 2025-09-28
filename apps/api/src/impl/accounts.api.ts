@@ -22,6 +22,7 @@ export class AccountsApiImpl extends AccountsApi {
   }
 
   override createAccount(
+    _idempotencyKey: string,
     createAccountRequest: CreateAccountRequest,
     request: Request,
   ): Account | Promise<Account> | Observable<Account> {
@@ -49,6 +50,7 @@ export class AccountsApiImpl extends AccountsApi {
   }
 
   override uploadAccountKyc(
+    _idempotencyKey: string,
     uploadAccountKycRequest: UploadAccountKycRequest,
     request: Request,
   ): Account | Promise<Account> | Observable<Account> {

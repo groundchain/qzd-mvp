@@ -21,16 +21,18 @@ export class AuthApiImpl extends AuthApi {
   }
 
   override loginUser(
+    _idempotencyKey: string,
     loginUserRequest: LoginUserRequest,
-    _request: Request,
+    request: Request,
   ): LoginUser200Response | Promise<LoginUser200Response> | Observable<LoginUser200Response> {
-    return this.bank.loginUser(loginUserRequest);
+    return this.bank.loginUser(loginUserRequest, request);
   }
 
   override registerUser(
+    _idempotencyKey: string,
     registerUserRequest: RegisterUserRequest,
-    _request: Request,
+    request: Request,
   ): RegisterUser201Response | Promise<RegisterUser201Response> | Observable<RegisterUser201Response> {
-    return this.bank.registerUser(registerUserRequest);
+    return this.bank.registerUser(registerUserRequest, request);
   }
 }

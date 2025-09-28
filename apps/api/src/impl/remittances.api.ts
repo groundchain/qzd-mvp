@@ -16,6 +16,7 @@ export class RemittancesApiImpl extends RemittancesApi {
   }
 
   override acquireQZDForUSRemittance(
+    _idempotencyKey: string,
     uSRemitAcquireQZDRequest: USRemitAcquireQZDRequest,
     _request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {

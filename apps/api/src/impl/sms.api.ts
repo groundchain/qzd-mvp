@@ -16,6 +16,7 @@ export class SmsApiImpl extends SmsApi {
   }
 
   override receiveSmsInbound(
+    _idempotencyKey: string,
     smsInboundRequest: SmsInboundRequest,
     request: Request,
   ): SmsInboundResponse | Promise<SmsInboundResponse> | Observable<SmsInboundResponse> {

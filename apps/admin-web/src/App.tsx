@@ -16,6 +16,14 @@ type AsyncStatus = 'idle' | 'pending';
 
 type ValidatorId = (typeof KNOWN_VALIDATORS)[number];
 
+function createIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `idem-${crypto.randomUUID()}`;
+  }
+  const randomSuffix = Math.random().toString(16).slice(2);
+  return `idem-${Date.now()}-${randomSuffix}`;
+}
+
 function sanitizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -133,6 +141,7 @@ export default function App() {
       try {
         await adminApi.signIssuanceRequest({
           id: requestId,
+          idempotencyKey: createIdempotencyKey(),
           signIssuanceRequestRequest: { validatorId: selectedValidator },
         });
         resetStatus(`Signature recorded for ${requestId} as ${selectedValidator}.`);
@@ -168,6 +177,7 @@ export default function App() {
       setCreateStatus('pending');
       try {
         await adminApi.createIssuanceRequest({
+          idempotencyKey: createIdempotencyKey(),
           issueRequest: {
             accountId,
             amount: { currency: currencyValue, value: amountValue },
@@ -206,7 +216,10 @@ export default function App() {
       setRedeemStatus('pending');
       setRedeemedVoucher(null);
       try {
-        const voucher = await agentsApi.redeemVoucher({ code });
+        const voucher = await agentsApi.redeemVoucher({
+          code,
+          idempotencyKey: createIdempotencyKey(),
+        });
         setRedeemedVoucher(voucher);
         setVoucherCodeInput('');
         resetStatus(`Voucher ${voucher.code} redeemed successfully.`);

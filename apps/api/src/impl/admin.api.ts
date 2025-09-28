@@ -22,6 +22,7 @@ export class AdminApiImpl extends AdminApi {
   }
 
   override createIssuanceRequest(
+    _idempotencyKey: string,
     issueRequest: IssueRequest,
     request: Request,
   ): IssuanceRequest | Promise<IssuanceRequest> | Observable<IssuanceRequest> {
@@ -46,9 +47,10 @@ export class AdminApiImpl extends AdminApi {
 
   override signIssuanceRequest(
     id: string,
+    _idempotencyKey: string,
     signIssuanceRequestRequest: SignIssuanceRequestRequest,
     request: Request,
   ): IssuanceRequest | Promise<IssuanceRequest> | Observable<IssuanceRequest> {
-    return this.bank.signIssuanceRequest(id, signIssuanceRequestRequest.validatorId, request);
+    return this.bank.signIssuanceRequest(id, signIssuanceRequestRequest, request);
   }
 }

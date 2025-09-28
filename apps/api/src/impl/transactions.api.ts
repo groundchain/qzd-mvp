@@ -22,6 +22,7 @@ export class TransactionsApiImpl extends TransactionsApi {
   }
 
   override initiateTransfer(
+    _idempotencyKey: string,
     transferRequest: TransferRequest,
     request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
@@ -29,10 +30,11 @@ export class TransactionsApiImpl extends TransactionsApi {
   }
 
   override issueTokens(
+    _idempotencyKey: string,
     issueTokensRequest: IssueTokensRequest,
     request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
-    return this.bank.issueFromRequest(issueTokensRequest.requestId, request);
+    return this.bank.issueFromRequest(issueTokensRequest, request);
   }
 
   override listAccountTransactions(
@@ -49,6 +51,7 @@ export class TransactionsApiImpl extends TransactionsApi {
   }
 
   override redeemTokens(
+    _idempotencyKey: string,
     _redeemRequest: RedeemRequest,
     _request: Request,
   ): Transaction | Promise<Transaction> | Observable<Transaction> {
