@@ -5,9 +5,13 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import type { QuoteResponse, Transaction, USRemitAcquireQZDRequest } from '@qzd/sdk-api/server';
 
-const FX_RATE = 7.8;
-const DEFAULT_FEE = 0.99;
-const TARIFFED_FEE_RATE = 0.03;
+const USD_MINOR_UNIT_SCALE = 100;
+const DEFAULT_FEE_MINOR_UNITS = 99; // $0.99
+const BASIS_POINT_SCALE = 10_000;
+const TARIFFED_FEE_BASIS_POINTS = 300; // 3%
+const FX_RATE_NUMERATOR = 39; // 7.8 expressed as 39/5
+const FX_RATE_DENOMINATOR = 5;
+const RATE_SCALE = 10_000; // rate precision of four decimals
 const QUOTE_EXPIRY_MINUTES = 5;
 const ASSET_CODE = 'QZD';
 const ISSUANCE_THRESHOLD = 2;
@@ -33,11 +37,8 @@ export class RemittancesService {
   private readonly validators: LedgerValidator[];
   private readonly keyMap = new Map<string, string>();
   private readonly accounts = new Map<string, LedgerAccountRef>();
-  private readonly rng =
-    typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto
-      ? globalThis.crypto
-      : undefined;
   private sequence = 0;
+  private quoteSequence = 0;
 
   constructor(private readonly clock: Clock = () => new Date()) {
     this.validators = VALIDATOR_KEYS.map(({ id, privateKey }) => {
@@ -54,28 +55,18 @@ export class RemittancesService {
 
   simulateQuote(usdAmount: string, scenario: string | QuoteScenario = 'DEFAULT'): QuoteResponse {
     const normalizedScenario = this.normalizeScenario(scenario);
-    const amount = this.parseAmount(usdAmount);
-    const fee = this.calculateFee(amount, normalizedScenario);
-    const netUsd = Math.max(0, amount - fee);
-    const buyValue = this.roundToTwoDecimals(netUsd * FX_RATE);
-    const buyFormatted = this.formatAmount(buyValue);
-    const quoteId = this.buildQuoteId(normalizedScenario);
-    const expiresAt = new Date(this.clock().getTime() + QUOTE_EXPIRY_MINUTES * 60_000).toISOString();
+    const amountMinorUnits = this.parseUsdMinorUnits(usdAmount);
+    const { quote } = this.createQuote(amountMinorUnits, normalizedScenario);
 
-    return {
-      quoteId,
-      sellAmount: { currency: 'USD', value: this.formatAmount(amount) },
-      buyAmount: { currency: ASSET_CODE, value: buyFormatted },
-      rate: this.formatRate(buyValue, amount),
-      expiresAt,
-    } satisfies QuoteResponse;
+    return quote;
   }
 
   acquireQzd(request: USRemitAcquireQZDRequest): Transaction {
     const scenario = this.normalizeScenario(request.scenario ?? 'DEFAULT');
-    const quote = this.simulateQuote(request.usdAmount.value, scenario);
+    const amountMinorUnits = this.parseUsdMinorUnits(request.usdAmount.value);
+    const { quote, buyMinorUnits } = this.createQuote(amountMinorUnits, scenario);
 
-    const minorUnits = Math.round(Number.parseFloat(quote.buyAmount.value) * 100);
+    const minorUnits = buyMinorUnits;
     if (minorUnits <= 0) {
       throw new BadRequestException('Requested amount does not produce any QZD.');
     }
@@ -160,18 +151,6 @@ export class RemittancesService {
     return ref;
   }
 
-  private calculateFee(amount: number, scenario: QuoteScenario): number {
-    switch (scenario) {
-      case 'TARIFFED':
-        return this.roundToTwoDecimals(amount * TARIFFED_FEE_RATE);
-      case 'SUBSIDIZED':
-        return 0;
-      case 'DEFAULT':
-      default:
-        return DEFAULT_FEE;
-    }
-  }
-
   private normalizeScenario(raw: string | QuoteScenario): QuoteScenario {
     const normalized = typeof raw === 'string' ? raw.toUpperCase() : raw;
     if (normalized === 'TARIFFED' || normalized === 'SUBSIDIZED') {
@@ -180,34 +159,102 @@ export class RemittancesService {
     return 'DEFAULT';
   }
 
-  private parseAmount(raw: string): number {
-    const parsed = Number.parseFloat(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+  private parseUsdMinorUnits(raw: string): number {
+    const normalized = raw?.trim();
+    if (!normalized) {
       throw new BadRequestException('usdAmount must be a positive decimal string');
     }
-    return parsed;
+
+    if (!/^\d+(?:\.\d+)?$/.test(normalized)) {
+      throw new BadRequestException('usdAmount must be a positive decimal string');
+    }
+
+    const [wholePart, fractionalPart = ''] = normalized.split('.');
+    const digits = BigInt(`${wholePart}${fractionalPart}`);
+    const scale = BigInt(10) ** BigInt(fractionalPart.length);
+    const numerator = digits * BigInt(USD_MINOR_UNIT_SCALE);
+    const denominator = scale;
+    const cents = Number((numerator * 2n + denominator) / (denominator * 2n));
+
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new BadRequestException('usdAmount must be a positive decimal string');
+    }
+
+    return cents;
   }
 
-  private roundToTwoDecimals(value: number): number {
-    return Math.round(value * 100) / 100;
+  private calculateFeeMinorUnits(amountMinorUnits: number, scenario: QuoteScenario): number {
+    switch (scenario) {
+      case 'TARIFFED': {
+        const numerator = BigInt(amountMinorUnits) * BigInt(TARIFFED_FEE_BASIS_POINTS);
+        const denominator = BigInt(BASIS_POINT_SCALE);
+        return Number((numerator * 2n + denominator) / (denominator * 2n));
+      }
+      case 'SUBSIDIZED':
+        return 0;
+      case 'DEFAULT':
+      default:
+        return Math.min(amountMinorUnits, DEFAULT_FEE_MINOR_UNITS);
+    }
   }
 
-  private formatAmount(value: number): string {
-    return value.toFixed(2);
+  private calculateBuyMinorUnits(netUsdMinorUnits: number): number {
+    if (netUsdMinorUnits <= 0) {
+      return 0;
+    }
+
+    const numerator = BigInt(netUsdMinorUnits) * BigInt(FX_RATE_NUMERATOR);
+    const denominator = BigInt(FX_RATE_DENOMINATOR);
+    return Number((numerator * 2n + denominator) / (denominator * 2n));
   }
 
-  private formatRate(buyValue: number, usdAmount: number): string {
-    if (usdAmount === 0) {
+  private formatMinorUnits(value: number): string {
+    const absolute = Math.abs(value);
+    const major = Math.floor(absolute / USD_MINOR_UNIT_SCALE);
+    const minor = (absolute % USD_MINOR_UNIT_SCALE).toString().padStart(2, '0');
+    const sign = value < 0 ? '-' : '';
+    return `${sign}${major}.${minor}`;
+  }
+
+  private formatRate(buyMinorUnits: number, sellMinorUnits: number): string {
+    if (sellMinorUnits === 0) {
       return '0.0000';
     }
-    return (buyValue / usdAmount).toFixed(4);
+
+    const numerator = BigInt(buyMinorUnits) * BigInt(RATE_SCALE);
+    const denominator = BigInt(sellMinorUnits);
+    const scaled = (numerator * 2n + denominator) / (denominator * 2n);
+    const whole = scaled / BigInt(RATE_SCALE);
+    const fractional = (scaled % BigInt(RATE_SCALE)).toString().padStart(4, '0');
+    return `${whole.toString()}.${fractional}`;
   }
 
   private buildQuoteId(scenario: QuoteScenario): string {
-    const suffix = this.rng && typeof this.rng.randomUUID === 'function'
-      ? this.rng.randomUUID()
-      : Math.random().toString(36).slice(2, 10);
-    return `quote_${scenario.toLowerCase()}_${suffix}`;
+    this.quoteSequence += 1;
+    return `quote_${scenario.toLowerCase()}_${this.quoteSequence.toString().padStart(6, '0')}`;
+  }
+
+  private createQuote(amountMinorUnits: number, scenario: QuoteScenario): {
+    quote: QuoteResponse;
+    buyMinorUnits: number;
+  } {
+    const feeMinorUnits = this.calculateFeeMinorUnits(amountMinorUnits, scenario);
+    const netMinorUnits = Math.max(0, amountMinorUnits - feeMinorUnits);
+    const buyMinorUnits = this.calculateBuyMinorUnits(netMinorUnits);
+    const rate = this.formatRate(buyMinorUnits, amountMinorUnits);
+    const quoteId = this.buildQuoteId(scenario);
+    const expiresAt = new Date(this.clock().getTime() + QUOTE_EXPIRY_MINUTES * 60_000).toISOString();
+
+    return {
+      quote: {
+        quoteId,
+        sellAmount: { currency: 'USD', value: this.formatMinorUnits(amountMinorUnits) },
+        buyAmount: { currency: ASSET_CODE, value: this.formatMinorUnits(buyMinorUnits) },
+        rate,
+        expiresAt,
+      },
+      buyMinorUnits,
+    };
   }
 }
 

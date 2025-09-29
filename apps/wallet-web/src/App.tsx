@@ -13,7 +13,7 @@ import {
 } from '@qzd/sdk-browser';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
-const QUOTE_SCENARIOS = ['DEFAULT', 'SUBSIDIZED', 'TARIFFED'] as const;
+const QUOTE_SCENARIOS = ['DEFAULT', 'TARIFFED', 'SUBSIDIZED'] as const;
 
 type QuoteScenario = (typeof QUOTE_SCENARIOS)[number];
 
@@ -73,6 +73,7 @@ export default function App() {
   const [quoteScenario, setQuoteScenario] = useState<QuoteScenario>('DEFAULT');
   const [quoteAmount, setQuoteAmount] = useState('100.00');
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quoteScenarioResult, setQuoteScenarioResult] = useState<QuoteScenario | null>(null);
   const [quoteStatus, setQuoteStatus] = useState<AsyncStatus>('idle');
 
   const configuration = useMemo(
@@ -92,6 +93,12 @@ export default function App() {
   const resetStatus = useCallback((message: string | null) => {
     setStatusMessage(message);
   }, []);
+
+  useEffect(() => {
+    if (!quote && quoteScenarioResult !== null) {
+      setQuoteScenarioResult(null);
+    }
+  }, [quote, quoteScenarioResult]);
 
   const refreshAccountData = useCallback(
     async (id: string) => {
@@ -291,11 +298,13 @@ export default function App() {
       try {
         const response = await remittancesApi.simulateQuote({ usdAmount: amount, scenario: quoteScenario });
         setQuote(response);
+        setQuoteScenarioResult(quoteScenario);
         resetStatus(null);
       } catch (error) {
         console.error('Quote request failed', error);
         resetStatus(error instanceof Error ? error.message : 'Unable to fetch quote.');
         setQuote(null);
+        setQuoteScenarioResult(null);
       } finally {
         setQuoteStatus('idle');
       }
@@ -309,6 +318,7 @@ export default function App() {
   const canSubmitTransfer =
     canUseAccountActions && transferDestinationValid && transferAmountValid && transferStatus !== 'pending';
   const canPreviewQuote = canUseAccountActions && quoteStatus !== 'pending';
+  const scenarioToggleDisabled = !canUseAccountActions || quoteStatus === 'pending';
 
   return (
     <main className="app-shell">
@@ -496,20 +506,22 @@ export default function App() {
                   disabled={!canUseAccountActions || quoteStatus === 'pending'}
                 />
               </label>
-              <fieldset disabled={!canUseAccountActions || quoteStatus === 'pending'}>
+              <fieldset disabled={scenarioToggleDisabled}>
                 <legend>Scenario</legend>
-                {QUOTE_SCENARIOS.map((scenario) => (
-                  <label key={scenario}>
-                    <input
-                      type="radio"
-                      name="quote-scenario"
-                      value={scenario}
-                      checked={quoteScenario === scenario}
-                      onChange={() => setQuoteScenario(scenario)}
-                    />
-                    {scenario}
-                  </label>
-                ))}
+                <div role="group" aria-label="Quote scenario">
+                  {QUOTE_SCENARIOS.map((scenario) => (
+                    <button
+                      key={scenario}
+                      type="button"
+                      onClick={() => setQuoteScenario(scenario)}
+                      disabled={scenarioToggleDisabled}
+                      aria-pressed={quoteScenario === scenario}
+                      style={{ fontWeight: quoteScenario === scenario ? 600 : 400, marginRight: '0.5rem' }}
+                    >
+                      {scenario}
+                    </button>
+                  ))}
+                </div>
               </fieldset>
               <button type="submit" disabled={!canPreviewQuote}>
                 {quoteStatus === 'pending' ? 'Fetching…' : 'Preview quote'}
@@ -521,6 +533,10 @@ export default function App() {
             <div className="quote-details">
               <h3>Quote details</h3>
               <dl>
+                <div>
+                  <dt>Scenario</dt>
+                  <dd>{quoteScenarioResult ?? '—'}</dd>
+                </div>
                 <div>
                   <dt>Quote ID</dt>
                   <dd>{quote.quoteId}</dd>
