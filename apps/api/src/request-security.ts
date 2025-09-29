@@ -36,7 +36,7 @@ export interface SignatureComponents {
   serializedBody: string;
 }
 
-interface ValidatedMutationContext {
+export interface ValidatedMutationContext {
   scope: string;
   bodyHash: string;
 }

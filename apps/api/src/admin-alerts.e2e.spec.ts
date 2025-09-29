@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
+import { InMemoryBankService, getFallbackBankService } from './in-memory-bank.service.js';
 import { createSignaturePayload, serializeBody } from './request-security.js';
 
 const DEV_SIGNING_PRIVATE_KEY_HEX =
@@ -78,6 +79,7 @@ function getResponseBody<T extends Record<string, unknown>>(response: ResponseWi
 describe('Admin alerts', () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication['getHttpServer']>;
+  let bank: InMemoryBankService;
 
   beforeAll(async () => {
     process.env.QZD_REQUEST_SIGNING_PUBLIC_KEY = DEV_SIGNING_PUBLIC_KEY_HEX;
@@ -89,6 +91,7 @@ describe('Admin alerts', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     server = app.getHttpServer();
+    bank = getFallbackBankService();
   });
 
   afterAll(async () => {
@@ -198,5 +201,23 @@ describe('Admin alerts', () => {
 
     const velocityAlert = (velocityPayload.alerts ?? []).find((alert) => alert.rule === 'velocity');
     expect(velocityAlert?.details?.accountId).toBe(accountId);
+  });
+
+  it('raises a balance mismatch alert after nightly reconciliation detects divergence', async () => {
+    const { token, accountId } = await registerUser('recon');
+
+    bank.debugSetAccountBalance(accountId, 50);
+    bank.runNightlyReconciliation();
+
+    const response = await client()
+      .get('/admin/alerts')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const payload = getResponseBody<{
+      alerts?: Array<{ rule?: string; details?: Record<string, unknown> }>;
+    }>(response);
+
+    const mismatchAlert = (payload.alerts ?? []).find((alert) => alert.rule === 'balance_mismatch');
+    expect(mismatchAlert?.details?.accountId).toBe(accountId);
   });
 });

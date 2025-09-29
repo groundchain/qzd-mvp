@@ -32,7 +32,7 @@ import type {
   SmsInboundResponse,
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
-import { RequestSecurityManager } from './request-security.js';
+import { RequestSecurityManager, type ValidatedMutationContext } from './request-security.js';
 import { recordTransactionMetric } from './observability/metrics.js';
 
 type AccountStatus = Account['status'];
@@ -56,6 +56,7 @@ type AccountRecord = {
   currency: string;
   balance: number;
   updatedAt: string;
+  openingBalance: number;
 };
 
 type TransactionRecord = Transaction;
@@ -105,6 +106,42 @@ type AlertRecord = {
   key: string;
 };
 
+type TransactionJob = {
+  kind: 'agent_cash_in' | 'transfer' | 'issuance';
+  snapshot: Record<string, unknown>;
+  execute: (transactionId: string) => TransactionRecord;
+  onSuccess?: (transaction: TransactionRecord) => void;
+  onRecovered?: (transaction: TransactionRecord) => void;
+};
+
+type TransactionJournalStatus = 'pending' | 'posted' | 'failed';
+
+interface TransactionJournalRecord {
+  scope: string;
+  bodyHash: string;
+  transactionId: string;
+  status: TransactionJournalStatus;
+  attempts: number;
+  job?: TransactionJob;
+  response?: TransactionRecord;
+  lastError?: DeadLetterError;
+}
+
+interface DeadLetterError {
+  name: string;
+  message: string;
+  stack?: string;
+}
+
+interface DeadLetterRecord {
+  scope: string;
+  jobKind: TransactionJob['kind'];
+  failedAt: string;
+  attempts: number;
+  error: DeadLetterError;
+  snapshot: Record<string, unknown>;
+}
+
 type TransferEvent = {
   amount: number;
   timestamp: number;
@@ -145,6 +182,8 @@ export class InMemoryBankService {
   private readonly activeAlertKeys = new Set<string>();
   private readonly transferEvents = new Map<string, TransferEvent[]>();
   private readonly accountCreationEvents: AccountCreationEvent[] = [];
+  private readonly transactionJournals = new Map<string, TransactionJournalRecord>();
+  private readonly deadLetterQueue = new Map<string, DeadLetterRecord>();
 
   private userSequence = 1;
   private accountSequence = 1;
@@ -152,6 +191,7 @@ export class InMemoryBankService {
   private issuanceSequence = 1;
   private voucherSequence = 1;
   private alertSequence = 1;
+  private crashNextTransaction = false;
 
   registerUser(request: RegisterUserRequest, actor: Request): RegisterUser201Response {
     const context = this.security.validateMutation(actor, request);
@@ -190,6 +230,7 @@ export class InMemoryBankService {
         currency: DEFAULT_CURRENCY,
         balance: DEFAULT_BALANCE,
         updatedAt: createdAt,
+        openingBalance: DEFAULT_BALANCE,
       };
 
       this.usersByEmail.set(email, user);
@@ -253,6 +294,7 @@ export class InMemoryBankService {
         currency: DEFAULT_CURRENCY,
         balance: 0,
         updatedAt: createdAt,
+        openingBalance: 0,
       };
 
       this.accounts.set(accountId, account);
@@ -329,49 +371,64 @@ export class InMemoryBankService {
   agentCashIn(request: AgentCashInRequest, actor: Request): Transaction {
     const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
-      const accountId = request.accountId?.trim();
-      const amountValue = request.amount?.value?.trim();
+    const accountId = request.accountId?.trim();
+    const amountValue = request.amount?.value?.trim();
 
-      if (!accountId || !amountValue) {
-        throw new BadRequestException('accountId and amount are required');
-      }
+    if (!accountId || !amountValue) {
+      throw new BadRequestException('accountId and amount are required');
+    }
 
-      const account = this.requireAccount(accountId);
-      if (account.ownerId !== user.id) {
-        throw new ForbiddenException('You do not have access to this account');
-      }
+    const account = this.requireAccount(accountId);
+    if (account.ownerId !== user.id) {
+      throw new ForbiddenException('You do not have access to this account');
+    }
 
-      const currency = request.amount?.currency?.trim() || account.currency;
-      if (currency !== account.currency) {
-        throw new BadRequestException('Currency mismatch with account');
-      }
+    const currency = request.amount?.currency?.trim() || account.currency;
+    if (currency !== account.currency) {
+      throw new BadRequestException('Currency mismatch with account');
+    }
 
-      const amount = this.parsePositiveAmount(amountValue);
-      const createdAt = new Date().toISOString();
+    const amount = this.parsePositiveAmount(amountValue);
+    const memo = request.memo?.trim();
 
-      account.balance = this.round(account.balance + amount);
-      account.updatedAt = createdAt;
-
-      const memo = request.memo?.trim();
-      const metadata: Record<string, string> = {};
-      if (memo) {
-        metadata.memo = memo;
-      }
-
-      const transaction: Transaction = {
-        id: this.buildId('txn', this.transactionSequence++),
+    return this.processTransaction(context, () => {
+      const snapshot: Record<string, unknown> = {
         accountId: account.id,
-        type: 'credit',
-        status: 'posted',
-        amount: this.monetary(amount, currency),
-        createdAt,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-      } satisfies Transaction;
+        amount,
+        currency,
+      };
+      if (memo) {
+        snapshot.memo = memo;
+      }
 
-      this.prependTransaction(account.id, transaction);
+      return {
+        kind: 'agent_cash_in',
+        snapshot,
+        execute: (transactionId: string) => {
+          const createdAt = new Date().toISOString();
+          account.balance = this.round(account.balance + amount);
+          account.updatedAt = createdAt;
 
-      return transaction;
+          const metadata: Record<string, string> = { direction: 'incoming' };
+          if (memo) {
+            metadata.memo = memo;
+          }
+
+          const transaction: Transaction = {
+            id: transactionId,
+            accountId: account.id,
+            type: 'credit',
+            status: 'posted',
+            amount: this.monetary(amount, currency),
+            createdAt,
+            metadata,
+          } satisfies Transaction;
+
+          this.prependTransaction(account.id, transaction);
+
+          return transaction;
+        },
+      } satisfies TransactionJob;
     });
   }
 
@@ -413,6 +470,7 @@ export class InMemoryBankService {
         voucherCode: code,
         feeValue: fee.toFixed(2),
         feeCurrency: currency,
+        direction: 'outgoing',
       };
       if (memo) {
         transactionMetadata.memo = memo;
@@ -476,6 +534,7 @@ export class InMemoryBankService {
       const account = this.requireAccount(record.accountId);
       const redemptionMetadata: Record<string, string> = {
         voucherCode: record.code,
+        direction: 'incoming',
       };
       if (record.metadata.memo) {
         redemptionMetadata.memo = record.metadata.memo;
@@ -502,6 +561,75 @@ export class InMemoryBankService {
 
       return this.toVoucher(record);
     });
+  }
+
+  retryFailedTransactions(): void {
+    const failures = Array.from(this.deadLetterQueue.values());
+    for (const failure of failures) {
+      const journal = this.transactionJournals.get(failure.scope);
+      if (!journal) {
+        this.deadLetterQueue.delete(failure.scope);
+        continue;
+      }
+
+      try {
+        this.executeTransactionJournal(journal);
+        if (journal.status === 'posted') {
+          this.deadLetterQueue.delete(failure.scope);
+        }
+      } catch (error) {
+        journal.lastError = this.normalizeError(error);
+        const existing = this.deadLetterQueue.get(failure.scope);
+        if (existing) {
+          existing.failedAt = new Date().toISOString();
+          existing.error = journal.lastError;
+          existing.attempts = journal.attempts;
+        }
+      }
+    }
+  }
+
+  getDeadLetterQueueSnapshot(): DeadLetterRecord[] {
+    return Array.from(this.deadLetterQueue.values()).map((entry) => ({
+      scope: entry.scope,
+      jobKind: entry.jobKind,
+      failedAt: entry.failedAt,
+      attempts: entry.attempts,
+      error: { ...entry.error },
+      snapshot: { ...entry.snapshot },
+    }));
+  }
+
+  simulateCrashOnNextTransaction(): void {
+    this.crashNextTransaction = true;
+  }
+
+  runNightlyReconciliation(): void {
+    const now = Date.now();
+    for (const account of this.accounts.values()) {
+      const recomputed = this.computeAccountBalanceFromHistory(account);
+      const roundedRecomputed = this.round(recomputed);
+      const roundedActual = this.round(account.balance);
+      if (Math.abs(roundedRecomputed - roundedActual) > 0.005) {
+        this.maybeRaiseAlert(
+          'balance_mismatch',
+          'high',
+          now,
+          {
+            accountId: account.id,
+            expectedBalance: roundedRecomputed.toFixed(2),
+            actualBalance: roundedActual.toFixed(2),
+          },
+          `balance_mismatch:${account.id}`,
+        );
+      }
+    }
+  }
+
+  debugSetAccountBalance(accountId: string, newBalance: number): void {
+    const account = this.requireAccount(accountId);
+    account.balance = this.round(newBalance);
+    account.updatedAt = new Date().toISOString();
   }
 
   listAdminAlerts(actor: Request): Alert[] {
@@ -558,67 +686,90 @@ export class InMemoryBankService {
   initiateTransfer(request: TransferRequest, actor: Request): Transaction {
     const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
-      const sourceId = request.sourceAccountId?.trim();
-      const destinationId = request.destinationAccountId?.trim();
-      const amountValue = request.amount?.value?.trim();
-      const currency = request.amount?.currency?.trim() || DEFAULT_CURRENCY;
+    const sourceId = request.sourceAccountId?.trim();
+    const destinationId = request.destinationAccountId?.trim();
+    const amountValue = request.amount?.value?.trim();
+    const currency = request.amount?.currency?.trim() || DEFAULT_CURRENCY;
 
-      if (!sourceId || !destinationId || !amountValue) {
-        throw new BadRequestException('sourceAccountId, destinationAccountId, and amount are required');
+    if (!sourceId || !destinationId || !amountValue) {
+      throw new BadRequestException('sourceAccountId, destinationAccountId, and amount are required');
+    }
+
+    const amount = Number.parseFloat(amountValue);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('amount must be a positive decimal string');
+    }
+
+    const sourceAccount = this.requireAccount(sourceId);
+    if (sourceAccount.ownerId !== user.id) {
+      throw new ForbiddenException('Transfers are limited to your accounts');
+    }
+
+    if (sourceAccount.currency !== currency) {
+      throw new BadRequestException('Currency mismatch with source account');
+    }
+
+    if (sourceAccount.balance < amount) {
+      throw new BadRequestException('Insufficient funds');
+    }
+
+    const destinationAccount = this.getOrCreateExternalAccount(destinationId, currency);
+    const memo = request.memo?.trim();
+
+    return this.processTransaction(context, () => {
+      const snapshot: Record<string, unknown> = {
+        sourceAccountId: sourceAccount.id,
+        destinationAccountId: destinationAccount.id,
+        amount,
+        currency,
+      };
+      if (memo) {
+        snapshot.memo = memo;
       }
 
-      const amount = Number.parseFloat(amountValue);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new BadRequestException('amount must be a positive decimal string');
-      }
+      return {
+        kind: 'transfer',
+        snapshot,
+        execute: (transactionId: string) => {
+          const createdAt = new Date().toISOString();
+          sourceAccount.balance = this.round(sourceAccount.balance - amount);
+          sourceAccount.updatedAt = createdAt;
+          destinationAccount.balance = this.round(destinationAccount.balance + amount);
+          destinationAccount.updatedAt = createdAt;
 
-      const sourceAccount = this.requireAccount(sourceId);
-      if (sourceAccount.ownerId !== user.id) {
-        throw new ForbiddenException('Transfers are limited to your accounts');
-      }
+          const metadata: Record<string, string> = { direction: 'outgoing' };
+          if (memo) {
+            metadata.memo = memo;
+          }
 
-      if (sourceAccount.currency !== currency) {
-        throw new BadRequestException('Currency mismatch with source account');
-      }
+          const transaction: Transaction = {
+            id: transactionId,
+            accountId: sourceAccount.id,
+            counterpartyAccountId: destinationAccount.id,
+            type: 'transfer',
+            status: 'posted',
+            amount: this.monetary(amount, currency),
+            createdAt,
+            metadata,
+          } satisfies Transaction;
 
-      if (sourceAccount.balance < amount) {
-        throw new BadRequestException('Insufficient funds');
-      }
+          const inboundMetadata: Record<string, string> = { ...metadata, direction: 'incoming' };
 
-      const destinationAccount = this.getOrCreateExternalAccount(destinationId, currency);
-      const createdAt = new Date().toISOString();
-      const transactionId = this.buildId('txn', this.transactionSequence++);
+          this.prependTransaction(sourceAccount.id, transaction);
+          this.prependTransaction(destinationAccount.id, {
+            ...transaction,
+            id: `${transactionId}_rcv`,
+            accountId: destinationAccount.id,
+            counterpartyAccountId: sourceAccount.id,
+            amount: this.monetary(amount, currency),
+            metadata: inboundMetadata,
+          });
 
-      sourceAccount.balance = this.round(sourceAccount.balance - amount);
-      sourceAccount.updatedAt = createdAt;
-      destinationAccount.balance = this.round(destinationAccount.balance + amount);
-      destinationAccount.updatedAt = createdAt;
+          this.recordTransferActivity(sourceAccount.id, amount, createdAt);
 
-      const memo = request.memo?.trim();
-      const transaction: Transaction = {
-        id: transactionId,
-        accountId: sourceAccount.id,
-        counterpartyAccountId: destinationAccount.id,
-        type: 'transfer',
-        status: 'posted',
-        amount: this.monetary(amount, currency),
-        createdAt,
-        metadata: memo ? { memo } : undefined,
-      } satisfies Transaction;
-
-      this.prependTransaction(sourceAccount.id, transaction);
-      this.prependTransaction(destinationAccount.id, {
-        ...transaction,
-        id: `${transactionId}_rcv`,
-        accountId: destinationAccount.id,
-        counterpartyAccountId: sourceAccount.id,
-        amount: this.monetary(amount, currency),
-      });
-
-      this.recordTransferActivity(sourceAccount.id, amount, createdAt);
-
-      return transaction;
+          return transaction;
+        },
+      } satisfies TransactionJob;
     });
   }
 
@@ -700,50 +851,68 @@ export class InMemoryBankService {
   issueFromRequest(request: IssueTokensRequest, actor: Request): Transaction {
     const context = this.security.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
-      const normalizedId = request.requestId?.trim();
-      if (!normalizedId) {
-        throw new BadRequestException('requestId is required');
-      }
+    const normalizedId = request.requestId?.trim();
+    if (!normalizedId) {
+      throw new BadRequestException('requestId is required');
+    }
 
-      const record = this.requireIssuanceRequest(normalizedId);
-      if (record.status === 'completed') {
-        throw new ConflictException('Issuance request already completed');
-      }
-      if (record.collected.size < record.required) {
-        throw new BadRequestException('Issuance request is not approved');
-      }
+    const record = this.requireIssuanceRequest(normalizedId);
+    if (record.status === 'completed') {
+      throw new ConflictException('Issuance request already completed');
+    }
+    if (record.collected.size < record.required) {
+      throw new BadRequestException('Issuance request is not approved');
+    }
 
-      const account = this.requireAccount(record.accountId);
-      if (account.ownerId !== user.id) {
-        throw new ForbiddenException('You do not have access to this account');
-      }
+    const account = this.requireAccount(record.accountId);
+    if (account.ownerId !== user.id) {
+      throw new ForbiddenException('You do not have access to this account');
+    }
 
-      const createdAt = new Date().toISOString();
-      account.balance = this.round(account.balance + record.amount);
-      account.updatedAt = createdAt;
-
-      const transactionId = this.buildId('txn', this.transactionSequence++);
+    return this.processTransaction(context, () => {
       const metadata: Record<string, string> = { requestId: record.id };
       if (record.reference) {
         metadata.reference = record.reference;
       }
 
-      const transaction: Transaction = {
-        id: transactionId,
+      const snapshot: Record<string, unknown> = {
         accountId: account.id,
-        type: 'issuance',
-        status: 'posted',
-        amount: this.monetary(record.amount, record.currency),
-        createdAt,
-        metadata,
-      } satisfies Transaction;
+        amount: record.amount,
+        currency: record.currency,
+        requestId: record.id,
+      };
+      if (record.reference) {
+        snapshot.reference = record.reference;
+      }
 
-      this.prependTransaction(account.id, transaction);
+      return {
+        kind: 'issuance',
+        snapshot,
+        execute: (transactionId: string) => {
+          const createdAt = new Date().toISOString();
+          account.balance = this.round(account.balance + record.amount);
+          account.updatedAt = createdAt;
 
-      record.status = 'completed';
+          const transaction: Transaction = {
+            id: transactionId,
+            accountId: account.id,
+            type: 'issuance',
+            status: 'posted',
+            amount: this.monetary(record.amount, record.currency),
+            createdAt,
+            metadata: { ...metadata, direction: 'incoming' },
+          } satisfies Transaction;
 
-      return transaction;
+          this.prependTransaction(account.id, transaction);
+          return transaction;
+        },
+        onSuccess: () => {
+          record.status = 'completed';
+        },
+        onRecovered: () => {
+          record.status = 'completed';
+        },
+      } satisfies TransactionJob;
     });
   }
 
@@ -810,6 +979,7 @@ export class InMemoryBankService {
       channel: 'sms',
       senderMsisdn,
       recipientMsisdn: destinationMsisdn,
+      direction: 'outgoing',
     };
     if (memo) {
       metadata.memo = memo;
@@ -859,6 +1029,7 @@ export class InMemoryBankService {
       currency: DEFAULT_CURRENCY,
       balance: DEFAULT_BALANCE,
       updatedAt: now,
+      openingBalance: DEFAULT_BALANCE,
     } satisfies AccountRecord;
 
     this.accounts.set(accountId, record);
@@ -1134,6 +1305,206 @@ export class InMemoryBankService {
     return { currency, value: amount.toFixed(2) } satisfies MonetaryAmount;
   }
 
+  private processTransaction(
+    context: ValidatedMutationContext,
+    jobFactory: () => TransactionJob,
+  ): Transaction {
+    const job = jobFactory();
+    const journal = this.getOrCreateTransactionJournal(context, job);
+    journal.job = job;
+
+    return this.security.applyIdempotency(context, () => this.executeTransactionJournal(journal));
+  }
+
+  private getOrCreateTransactionJournal(
+    context: ValidatedMutationContext,
+    job: TransactionJob,
+  ): TransactionJournalRecord {
+    const existing = this.transactionJournals.get(context.scope);
+    if (existing) {
+      if (existing.bodyHash !== context.bodyHash) {
+        throw new ConflictException({
+          code: 'CONFLICT',
+          message: 'Idempotency key has already been used with a different payload.',
+        });
+      }
+      return existing;
+    }
+
+    const record: TransactionJournalRecord = {
+      scope: context.scope,
+      bodyHash: context.bodyHash,
+      transactionId: this.buildId('txn', this.transactionSequence++),
+      status: 'pending',
+      attempts: 0,
+      job,
+    };
+
+    this.transactionJournals.set(context.scope, record);
+    return record;
+  }
+
+  private executeTransactionJournal(journal: TransactionJournalRecord): TransactionRecord {
+    journal.attempts += 1;
+    const existing = this.findTransactionRecord(journal.transactionId);
+    if (existing && journal.status !== 'posted') {
+      const recovered = this.cloneTransaction(existing);
+      journal.status = 'posted';
+      journal.response = recovered;
+      journal.lastError = undefined;
+      this.deadLetterQueue.delete(journal.scope);
+      journal.job?.onRecovered?.(recovered);
+      return this.cloneTransaction(recovered);
+    }
+
+    const job = journal.job;
+    if (!job) {
+      throw new Error('No transaction job registered for execution.');
+    }
+
+    try {
+      const result = job.execute(journal.transactionId);
+      const transaction = this.cloneTransaction(result);
+
+      if (this.crashNextTransaction) {
+        this.crashNextTransaction = false;
+        throw new Error('Simulated transaction crash');
+      }
+
+      journal.status = 'posted';
+      journal.response = transaction;
+      journal.lastError = undefined;
+      this.deadLetterQueue.delete(journal.scope);
+      job.onSuccess?.(transaction);
+      return this.cloneTransaction(transaction);
+    } catch (error) {
+      journal.status = 'failed';
+      this.crashNextTransaction = false;
+      const normalized = this.normalizeError(error);
+      journal.lastError = normalized;
+      this.enqueueDeadLetter(journal, normalized);
+      throw error;
+    } finally {
+      this.crashNextTransaction = false;
+    }
+  }
+
+  private enqueueDeadLetter(journal: TransactionJournalRecord, error: DeadLetterError): void {
+    const failedAt = new Date().toISOString();
+    const job = journal.job;
+    if (!job) {
+      return;
+    }
+
+    const existing = this.deadLetterQueue.get(journal.scope);
+    if (existing) {
+      existing.failedAt = failedAt;
+      existing.attempts = journal.attempts;
+      existing.error = error;
+      return;
+    }
+
+    this.deadLetterQueue.set(journal.scope, {
+      scope: journal.scope,
+      jobKind: job.kind,
+      failedAt,
+      attempts: journal.attempts,
+      error,
+      snapshot: { ...job.snapshot },
+    });
+  }
+
+  private computeAccountBalanceFromHistory(account: AccountRecord): number {
+    const history = this.transactions.get(account.id) ?? [];
+    let running = account.openingBalance;
+    for (const entry of history.slice().reverse()) {
+      running = this.round(running + this.calculateTransactionDelta(entry, account.id));
+    }
+    return running;
+  }
+
+  private calculateTransactionDelta(transaction: TransactionRecord, accountId: string): number {
+    const raw = transaction.amount?.value;
+    if (typeof raw !== 'string') {
+      return 0;
+    }
+    const amount = Number.parseFloat(raw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return 0;
+    }
+
+    switch (transaction.type) {
+      case 'credit':
+      case 'issuance':
+      case 'redemption':
+        return this.round(amount);
+      case 'debit':
+        return this.round(-amount);
+      case 'transfer': {
+        const direction = this.getTransactionDirection(transaction, accountId);
+        return direction === 'incoming' ? this.round(amount) : this.round(-amount);
+      }
+      default:
+        return 0;
+    }
+  }
+
+  private getTransactionDirection(
+    transaction: TransactionRecord,
+    accountId: string,
+  ): 'incoming' | 'outgoing' {
+    const metadata = transaction.metadata ?? {};
+    const directionRaw = typeof metadata.direction === 'string' ? metadata.direction.toLowerCase() : undefined;
+    if (directionRaw === 'incoming' || directionRaw === 'outgoing') {
+      return directionRaw;
+    }
+    if (transaction.accountId === accountId && transaction.counterpartyAccountId === accountId) {
+      return 'incoming';
+    }
+    if (transaction.accountId === accountId) {
+      return 'outgoing';
+    }
+    return 'incoming';
+  }
+
+  private findTransactionRecord(transactionId: string): TransactionRecord | undefined {
+    for (const history of this.transactions.values()) {
+      const found = history.find((entry) => entry.id === transactionId);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+
+  private cloneTransaction(transaction: TransactionRecord): TransactionRecord {
+    if (typeof globalThis.structuredClone === 'function') {
+      return structuredClone(transaction);
+    }
+    return JSON.parse(JSON.stringify(transaction)) as TransactionRecord;
+  }
+
+  private normalizeError(error: unknown): DeadLetterError {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } satisfies DeadLetterError;
+    }
+    if (typeof error === 'string') {
+      return { name: 'Error', message: error } satisfies DeadLetterError;
+    }
+    try {
+      return {
+        name: 'Error',
+        message: JSON.stringify(error),
+      } satisfies DeadLetterError;
+    } catch {
+      return { name: 'Error', message: 'Unknown error' } satisfies DeadLetterError;
+    }
+  }
+
   private toIssuanceRequest(record: IssuanceRequestRecord): IssuanceRequest {
     return {
       id: record.id,
@@ -1162,6 +1533,7 @@ export class InMemoryBankService {
       currency,
       balance: 0,
       updatedAt: now,
+      openingBalance: 0,
     };
 
     this.accounts.set(accountId, account);

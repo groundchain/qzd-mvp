@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
+import { InMemoryBankService, getFallbackBankService } from './in-memory-bank.service.js';
 import { createSignaturePayload, serializeBody } from './request-security.js';
 
 const DEV_SIGNING_PRIVATE_KEY_HEX =
@@ -85,6 +86,7 @@ function applySecurity(
 describe('Wallet flows', () => {
   let app: INestApplication;
   let server: ReturnType<INestApplication['getHttpServer']>;
+  let bank: InMemoryBankService;
 
   beforeAll(async () => {
     process.env.QZD_REQUEST_SIGNING_PUBLIC_KEY = DEV_SIGNING_PUBLIC_KEY_HEX;
@@ -96,6 +98,7 @@ describe('Wallet flows', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     server = app.getHttpServer();
+    bank = getFallbackBankService();
   });
 
   afterAll(async () => {
@@ -426,5 +429,153 @@ describe('Wallet flows', () => {
     const finalTotal = Number.parseFloat((finalBalancePayload.total?.value as string) ?? '0');
 
     expect(finalTotal - startingTotal).toBeCloseTo(75, 2);
+  });
+
+  it('ensures cash-in retries remain idempotent after a simulated crash', async () => {
+    const email = `crash${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Crash Test User';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const { request: registerRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+    );
+    const registerResponse = await registerRequest.send(registerBody).expect(201);
+    const registerPayload = getResponseBody<{
+      token?: string;
+      account?: { id?: string };
+    }>(registerResponse);
+
+    const token = registerPayload.token as string;
+    const accountId = registerPayload.account?.id as string;
+
+    const startingBalanceResponse = await client()
+      .get(`/accounts/${accountId}/balance`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const startingBalancePayload = getResponseBody<{ total?: { value?: string } }>(
+      startingBalanceResponse,
+    );
+    const startingTotal = Number.parseFloat((startingBalancePayload.total?.value as string) ?? '0');
+
+    const cashInBody = {
+      accountId,
+      amount: { currency: 'QZD', value: '25.00' },
+      memo: 'Crash retry',
+    } as const;
+
+    const idempotencyKey = `idem-${randomUUID()}`;
+
+    bank.simulateCrashOnNextTransaction();
+
+    const { request: firstRequest } = applySecurity(
+      client().post('/agents/cashin'),
+      'POST',
+      '/agents/cashin',
+      cashInBody,
+      { idempotencyKey },
+    );
+    await firstRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(cashInBody)
+      .expect(500);
+
+    const dlqAfterCrash = bank.getDeadLetterQueueSnapshot();
+    expect(dlqAfterCrash).toHaveLength(1);
+    expect(dlqAfterCrash[0]?.jobKind).toBe('agent_cash_in');
+
+    const { request: retryRequest } = applySecurity(
+      client().post('/agents/cashin'),
+      'POST',
+      '/agents/cashin',
+      cashInBody,
+      { idempotencyKey },
+    );
+    const retryResponse = await retryRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(cashInBody)
+      .expect(201);
+    const retryPayload = getResponseBody<{ id?: string }>(retryResponse);
+    expect(retryPayload.id).toBeTruthy();
+
+    const dlqAfterRetry = bank.getDeadLetterQueueSnapshot();
+    expect(dlqAfterRetry).toHaveLength(0);
+
+    const finalBalanceResponse = await client()
+      .get(`/accounts/${accountId}/balance`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const finalBalancePayload = getResponseBody<{ total?: { value?: string } }>(finalBalanceResponse);
+    const finalTotal = Number.parseFloat((finalBalancePayload.total?.value as string) ?? '0');
+
+    expect(finalTotal - startingTotal).toBeCloseTo(25, 2);
+  });
+
+  it('drains the dead-letter queue when the retry worker runs', async () => {
+    const email = `worker${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Retry Worker User';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const { request: registerRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+    );
+    const registerResponse = await registerRequest.send(registerBody).expect(201);
+    const registerPayload = getResponseBody<{
+      token?: string;
+      account?: { id?: string };
+    }>(registerResponse);
+
+    const token = registerPayload.token as string;
+    const accountId = registerPayload.account?.id as string;
+
+    const cashInBody = {
+      accountId,
+      amount: { currency: 'QZD', value: '15.00' },
+      memo: 'Worker retry',
+    } as const;
+    const idempotencyKey = `idem-${randomUUID()}`;
+
+    bank.simulateCrashOnNextTransaction();
+
+    const { request: firstRequest } = applySecurity(
+      client().post('/agents/cashin'),
+      'POST',
+      '/agents/cashin',
+      cashInBody,
+      { idempotencyKey },
+    );
+    await firstRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(cashInBody)
+      .expect(500);
+
+    expect(bank.getDeadLetterQueueSnapshot()).toHaveLength(1);
+
+    bank.retryFailedTransactions();
+
+    expect(bank.getDeadLetterQueueSnapshot()).toHaveLength(0);
+
+    const { request: confirmRequest } = applySecurity(
+      client().post('/agents/cashin'),
+      'POST',
+      '/agents/cashin',
+      cashInBody,
+      { idempotencyKey },
+    );
+    const confirmResponse = await confirmRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(cashInBody)
+      .expect(201);
+    const confirmPayload = getResponseBody<{ id?: string }>(confirmResponse);
+    expect(confirmPayload.id).toBeTruthy();
   });
 });
