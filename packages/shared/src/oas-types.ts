@@ -532,11 +532,8 @@ export type components = {
             receiverAccountId?: string;
             /** @description Beneficiary phone number when an account identifier is unavailable. */
             receiverPhone?: string;
-            /**
-             * @description Optional pricing program override for this acquisition.
-             * @enum {string}
-             */
-            scenario?: "DEFAULT" | "TARIFFED" | "SUBSIDIZED";
+            /** @description Optional pricing program override for this acquisition. */
+            scenario?: components["schemas"]["QuoteScenario"];
         };
         QuoteResponse: {
             quoteId: string;
@@ -584,6 +581,11 @@ export type components = {
                 [key: string]: string;
             };
         };
+        /**
+         * @description Pricing program applied to a remittance quote.
+         * @enum {string}
+         */
+        QuoteScenario: "DEFAULT" | "TARIFFED" | "SUBSIDIZED";
     };
     responses: {
         /** @description Invalid request payload or parameters. */
@@ -1398,13 +1400,10 @@ export interface operations {
             query: {
                 /** @example 100.00 */
                 usdAmount: string;
-                /**
-                 * @description Pricing program to apply to the remittance quote. Allowed values: DEFAULT,
+                /** @description Pricing program to apply to the remittance quote. Allowed values: DEFAULT,
                  *     TARIFFED, SUBSIDIZED.
-                 *
-                 * @example DEFAULT
-                 */
-                scenario?: string;
+                 *      */
+                scenario?: components["schemas"]["QuoteScenario"];
             };
             header?: never;
             path?: never;
@@ -1418,19 +1417,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /** @example {
-                     *       "quoteId": "quote_default_100",
-                     *       "sellAmount": {
-                     *         "currency": "USD",
-                     *         "value": "100.00"
-                     *       },
-                     *       "buyAmount": {
-                     *         "currency": "QZD",
-                     *         "value": "772.28"
-                     *       },
-                     *       "rate": "7.7228",
-                     *       "expiresAt": "2024-05-02T12:00:00Z"
-                     *     } */
                     "application/json": components["schemas"]["QuoteResponse"];
                 };
             };

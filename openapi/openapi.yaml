@@ -752,8 +752,17 @@ paths:
             Pricing program to apply to the remittance quote. Allowed values: DEFAULT,
             TARIFFED, SUBSIDIZED.
           schema:
-            type: string
-          example: DEFAULT
+            $ref: '#/components/schemas/QuoteScenario'
+          examples:
+            default:
+              summary: Standard program
+              value: DEFAULT
+            tariffed:
+              summary: Tariffed program (3% fee)
+              value: TARIFFED
+            subsidized:
+              summary: Subsidized program (no fee)
+              value: SUBSIDIZED
       responses:
         '200':
           description: Quote simulated successfully.
@@ -761,16 +770,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QuoteResponse'
-              example:
-                quoteId: "quote_default_100"
-                sellAmount:
-                  currency: "USD"
-                  value: "100.00"
-                buyAmount:
-                  currency: "QZD"
-                  value: "772.28"
-                rate: "7.7228"
-                expiresAt: "2024-05-02T12:00:00Z"
+              examples:
+                default:
+                  summary: DEFAULT scenario with flat $0.99 fee
+                  value:
+                    quoteId: "quote_default_000001"
+                    sellAmount:
+                      currency: "USD"
+                      value: "100.00"
+                    buyAmount:
+                      currency: "QZD"
+                      value: "772.28"
+                    rate: "7.7228"
+                    expiresAt: "2024-05-02T12:00:00Z"
+                tariffed:
+                  summary: TARIFFED scenario with 3% fee
+                  value:
+                    quoteId: "quote_tariffed_000002"
+                    sellAmount:
+                      currency: "USD"
+                      value: "100.00"
+                    buyAmount:
+                      currency: "QZD"
+                      value: "756.60"
+                    rate: "7.5660"
+                    expiresAt: "2024-05-02T12:00:00Z"
+                subsidized:
+                  summary: SUBSIDIZED scenario with no fee
+                  value:
+                    quoteId: "quote_subsidized_000003"
+                    sellAmount:
+                      currency: "USD"
+                      value: "100.00"
+                    buyAmount:
+                      currency: "QZD"
+                      value: "780.00"
+                    rate: "7.8000"
+                    expiresAt: "2024-05-02T12:00:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
         '401':
@@ -1546,12 +1582,9 @@ components:
           type: string
           description: Beneficiary phone number when an account identifier is unavailable.
         scenario:
-          type: string
           description: Optional pricing program override for this acquisition.
-          enum:
-            - DEFAULT
-            - TARIFFED
-            - SUBSIDIZED
+          allOf:
+            - $ref: '#/components/schemas/QuoteScenario'
       required:
         - usdAmount
         - senderPhone
@@ -1665,3 +1698,10 @@ components:
       required:
         - code
         - message
+    QuoteScenario:
+      type: string
+      description: Pricing program applied to a remittance quote.
+      enum:
+        - DEFAULT
+        - TARIFFED
+        - SUBSIDIZED

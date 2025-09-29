@@ -21,16 +21,19 @@ describe('RemittancesService', () => {
     const service = new RemittancesService(clock);
 
     const baseline = service.simulateQuote('100.00', 'DEFAULT');
+    expect(baseline.quoteId).toBe('quote_default_000001');
     expect(baseline.buyAmount.value).toBe('772.28');
     expect(baseline.rate).toBe('7.7228');
 
-    const subsidized = service.simulateQuote('100.00', 'SUBSIDIZED');
-    expect(subsidized.buyAmount.value).toBe('780.00');
-    expect(subsidized.rate).toBe('7.8000');
-
     const tariffed = service.simulateQuote('100.00', 'TARIFFED');
+    expect(tariffed.quoteId).toBe('quote_tariffed_000002');
     expect(tariffed.buyAmount.value).toBe('756.60');
     expect(tariffed.rate).toBe('7.5660');
+
+    const subsidized = service.simulateQuote('100.00', 'SUBSIDIZED');
+    expect(subsidized.quoteId).toBe('quote_subsidized_000003');
+    expect(subsidized.buyAmount.value).toBe('780.00');
+    expect(subsidized.rate).toBe('7.8000');
   });
 
   it('mints QZD with multisig signatures', () => {
