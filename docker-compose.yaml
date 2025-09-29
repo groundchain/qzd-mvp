@@ -1,29 +1,144 @@
 services:
-  prometheus:
-    image: prom/prometheus:v2.50.1
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-    volumes:
-      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - '9090:9090'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-
-  grafana:
-    image: grafana/grafana:10.4.2
-    restart: unless-stopped
-    depends_on:
-      - prometheus
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    ports:
-      - '3001:3000'
+      POSTGRES_DB: qzd
+      POSTGRES_USER: qzd
+      POSTGRES_PASSWORD: qzd
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./ops/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: node:20
+    working_dir: /workspace
+    entrypoint: ["/workspace/scripts/docker-entrypoint.sh"]
+    command:
+      - pnpm
+      - --filter
+      - @qzd/api
+      - dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://qzd:qzd@postgres:5432/qzd
+      CORS_ORIGIN: http://localhost:5173,http://localhost:5174
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  wallet-web:
+    image: node:20
+    working_dir: /workspace
+    entrypoint: ["/workspace/scripts/docker-entrypoint.sh"]
+    command:
+      - pnpm
+      - --filter
+      - @qzd/wallet-web
+      - dev
+      - --
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5173"
+    environment:
+      NODE_ENV: development
+      VITE_API_BASE_URL: http://api:3000
+      CHOKIDAR_USEPOLLING: "1"
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin-web:
+    image: node:20
+    working_dir: /workspace
+    entrypoint: ["/workspace/scripts/docker-entrypoint.sh"]
+    command:
+      - pnpm
+      - --filter
+      - @qzd/admin-web
+      - dev
+      - --
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5174"
+    environment:
+      NODE_ENV: development
+      VITE_API_BASE_URL: http://api:3000
+      CHOKIDAR_USEPOLLING: "1"
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+    ports:
+      - "5174:5174"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  sms-sim:
+    image: node:20
+    working_dir: /workspace
+    entrypoint: ["/workspace/scripts/docker-entrypoint.sh"]
+    command:
+      - pnpm
+      - --filter
+      - @qzd/sms-sim
+      - start
+      - --
+      - --base
+      - http://api:3000
+    environment:
+      NODE_ENV: development
+      SMS_SIM_API_BASE: http://api:3000
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+    stdin_open: true
+    tty: true
+    depends_on:
+      api:
+        condition: service_healthy
+
+  prism:
+    image: stoplight/prism:5
+    command: ["mock", "--port", "4010", "/tmp/openapi.yaml"]
+    volumes:
+      - ./openapi/openapi.yaml:/tmp/openapi.yaml:ro
+    ports:
+      - "4010:4010"
+
+  docs:
+    image: nginx:1.25-alpine
+    volumes:
+      - ./docs:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"
+    restart: unless-stopped
 
 volumes:
-  grafana-data:
+  postgres-data:
+  pnpm-store:
