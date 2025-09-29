@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^9.36.0
         version: 9.36.0
+      '@noble/curves':
+        specifier: ^1.6.0
+        version: 1.9.7
       '@openapitools/openapi-generator-cli':
         specifier: ^2.23.4
         version: 2.23.4
