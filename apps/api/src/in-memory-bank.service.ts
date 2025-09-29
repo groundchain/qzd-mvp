@@ -33,6 +33,7 @@ import type {
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
 import { RequestSecurityManager } from './request-security.js';
+import { recordTransactionMetric } from './observability/metrics.js';
 
 type AccountStatus = Account['status'];
 type KycLevel = Account['kycLevel'];
@@ -1172,6 +1173,7 @@ export class InMemoryBankService {
     const history = this.transactions.get(accountId) ?? [];
     history.unshift(transaction);
     this.transactions.set(accountId, history);
+    recordTransactionMetric(transaction);
   }
 
   private findCursorIndex(history: TransactionRecord[], cursor: string): number {

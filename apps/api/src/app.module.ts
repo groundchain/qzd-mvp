@@ -4,11 +4,12 @@ import { AppService } from './app.service.js';
 import { ApiModule } from '@qzd/sdk-api/server';
 import { apiImplementations } from './impl/index.js';
 import { InMemoryBankService } from './in-memory-bank.service.js';
+import { MetricsController } from './observability/metrics.controller.js';
 import './register-generated-metadata.js';
 
 @Module({
   imports: [ApiModule.forRoot(apiImplementations)],
-  controllers: [AppController],
+  controllers: [AppController, MetricsController],
   providers: [AppService, InMemoryBankService]
 })
 export class AppModule {}

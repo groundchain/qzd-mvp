@@ -7,18 +7,23 @@ import type {
   GetLiveness200Response,
   GetReadiness200Response,
 } from '@qzd/sdk-api/server';
+import { AppService } from '../app.service.js';
 
 @Injectable()
 export class HealthApiImpl extends HealthApi {
+  constructor(private readonly appService: AppService) {
+    super();
+  }
+
   override getLiveness(
-    request: Request,
+    _request: Request,
   ): GetLiveness200Response | Promise<GetLiveness200Response> | Observable<GetLiveness200Response> {
-    throw new Error('Method not implemented.');
+    return this.appService.getLiveness();
   }
 
   override getReadiness(
-    request: Request,
+    _request: Request,
   ): GetReadiness200Response | Promise<GetReadiness200Response> | Observable<GetReadiness200Response> {
-    throw new Error('Method not implemented.');
+    return this.appService.getReadiness();
   }
 }

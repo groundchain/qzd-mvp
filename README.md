@@ -26,3 +26,9 @@ pnpm install
 - `pnpm gen:all` – Regenerates clients and the shared OpenAPI TypeScript types.
 
 Husky runs linting and type checking before commits, and GitHub Actions ensures CI parity on pull requests.
+
+### Observability
+
+- The API exposes Prometheus-compatible metrics at `GET /metrics` and health probes at `GET /health/live` and `GET /health/ready`.
+- OpenTelemetry tracing is enabled by default and exports spans to an OTLP endpoint specified via `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Run `docker compose up` to launch Prometheus on <http://localhost:9090> and Grafana on <http://localhost:3001>. Prometheus scrapes the local API instance via the `/metrics` endpoint.
