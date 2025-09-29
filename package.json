@@ -22,6 +22,7 @@
     "oas:mock:server": "pnpm exec prism mock openapi/openapi.yaml --host 127.0.0.1 --port 4010",
     "oas:mock": "start-server-and-test \"prism mock openapi/openapi.yaml --host 127.0.0.1 --port 4010\" http-get://127.0.0.1:4010/health/live \"node ./scripts/oas-mock-check.mjs\"",
     "test:contract": "start-server-and-test \"pnpm oas:mock:server\" http-get://127.0.0.1:4010/health/live \"pnpm --filter @qzd/sdk-browser test:contract && pnpm --filter @qzd/sdk-node test:contract\"",
+    "seed:dev": "pnpm --filter @qzd/api exec node scripts/seed-dev.mjs",
     "oas:docs": "redocly build-docs openapi/openapi.yaml --output openapi/dist/index.html"
   },
   "devDependencies": {
