@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Quetzal Digital Docs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 3rem 1.5rem;
+        background: #0f172a;
+        color: #f8fafc;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      main {
+        max-width: 720px;
+        background: rgba(15, 23, 42, 0.85);
+        border-radius: 1.5rem;
+        padding: 2.5rem;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(12px);
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 2.5rem;
+        letter-spacing: 0.04em;
+      }
+      p {
+        line-height: 1.6;
+        margin: 1rem 0;
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      a {
+        color: #38bdf8;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code {
+        background: rgba(15, 118, 110, 0.25);
+        padding: 0.15rem 0.45rem;
+        border-radius: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Quetzal Digital Developer Hub</h1>
+      <p>
+        Welcome to the Quetzal Digital developer experience stack. This lightweight
+        documentation portal is served via the <code>docs</code> service inside the
+        development Docker Compose file.
+      </p>
+      <p>
+        Explore the available surfaces while the stack is running:
+      </p>
+      <ul>
+        <li><a href="http://localhost:3000">API (NestJS)</a></li>
+        <li><a href="http://localhost:5173">Wallet Web (Vite)</a></li>
+        <li><a href="http://localhost:5174">Admin Web (Vite)</a></li>
+        <li><a href="http://localhost:4010">Prism Mock Server</a></li>
+        <li><a href="http://localhost:8080">Docs (this site)</a></li>
+      </ul>
+      <p>
+        Use <code>make dev</code> to launch the full developer stack or
+        <code>make mock</code> when you only need the mock services.
+      </p>
+    </main>
+  </body>
+</html>
