@@ -282,6 +282,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/alerts/{id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge and clear an administrative alert. */
+        post: operations["acknowledgeAdminAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/issuance-requests": {
         parameters: {
             query?: never;
@@ -540,9 +557,12 @@ export type components = {
             id: string;
             /** @enum {string} */
             severity: "low" | "medium" | "high";
-            message: string;
+            rule: string;
             /** Format: date-time */
-            createdAt: string;
+            ts: string;
+            details?: {
+                [key: string]: unknown;
+            };
         };
         /** @description Inbound SMS payload forwarded from the messaging gateway. */
         SmsInboundRequest: {
@@ -558,7 +578,7 @@ export type components = {
         };
         Error: {
             /** @enum {string} */
-            code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE" | "LIMIT_EXCEEDED" | "ACCOUNT_FROZEN";
+            code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE" | "LIMIT_EXCEEDED" | "ACCOUNT_FROZEN" | "INVALID_SIGNATURE" | "REPLAY_DETECTED";
             message: string;
             details?: {
                 [key: string]: string;
@@ -665,6 +685,8 @@ export type components = {
     parameters: {
         /** @description Unique account identifier. */
         AccountIdPath: string;
+        /** @description Unique key to guarantee idempotent handling of POST requests. */
+        IdempotencyKeyHeader: string;
     };
     requestBodies: never;
     headers: never;
@@ -675,7 +697,10 @@ export interface operations {
     registerUser: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -732,7 +757,10 @@ export interface operations {
     loginUser: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -780,7 +808,10 @@ export interface operations {
     createAccount: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -831,7 +862,10 @@ export interface operations {
     uploadAccountKyc: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -979,7 +1013,10 @@ export interface operations {
     initiateTransfer: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1031,7 +1068,10 @@ export interface operations {
     issueTokens: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1079,7 +1119,10 @@ export interface operations {
     redeemTokens: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1133,7 +1176,10 @@ export interface operations {
     agentCashIn: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1185,7 +1231,10 @@ export interface operations {
     agentCashOut: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1242,7 +1291,10 @@ export interface operations {
     redeemVoucher: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path: {
                 /** @description Voucher code issued during agent cash-out. */
                 code: string;
@@ -1291,7 +1343,10 @@ export interface operations {
     acquireQZDForUSRemittance: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1450,14 +1505,23 @@ export interface operations {
                      *         {
                      *           "id": "alert_001",
                      *           "severity": "high",
-                     *           "message": "Validator quorum degradation detected.",
-                     *           "createdAt": "2024-05-02T09:20:00Z"
+                     *           "rule": "structuring",
+                     *           "ts": "2024-05-02T09:20:00Z",
+                     *           "details": {
+                     *             "accountId": "acc_123",
+                     *             "windowMinutes": 10,
+                     *             "transferCount": 4
+                     *           }
                      *         },
                      *         {
                      *           "id": "alert_002",
                      *           "severity": "medium",
-                     *           "message": "Delayed settlement from correspondent bank.",
-                     *           "createdAt": "2024-05-02T10:05:00Z"
+                     *           "rule": "velocity",
+                     *           "ts": "2024-05-02T10:05:00Z",
+                     *           "details": {
+                     *             "accountId": "acc_456",
+                     *             "transferCount": 7
+                     *           }
                      *         }
                      *       ]
                      *     } */
@@ -1465,6 +1529,26 @@ export interface operations {
                         alerts?: components["schemas"]["Alert"][];
                     };
                 };
+            };
+        };
+    };
+    acknowledgeAdminAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Alert acknowledged successfully. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["UnauthorizedError"];
             403: components["responses"]["ForbiddenError"];
@@ -1527,7 +1611,10 @@ export interface operations {
     createIssuanceRequest: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -1576,7 +1663,10 @@ export interface operations {
     signIssuanceRequest: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path: {
                 /** @description Identifier of the issuance request to sign. */
                 id: string;
@@ -1710,7 +1800,10 @@ export interface operations {
     receiveSmsInbound: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
             path?: never;
             cookie?: never;
         };
