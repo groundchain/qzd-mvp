@@ -139,6 +139,31 @@ services:
       - "8080:80"
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./ops/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+
 volumes:
   postgres-data:
   pnpm-store:
+  grafana-data:
