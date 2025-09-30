@@ -1,4 +1,9 @@
-## [0.1.1](https://github.com/groundchain/qzd-mvp/compare/v0.1.0...v0.1.1) (2025-09-30)
+## [0.1.2](https://github.com/groundchain/qzd-mvp/compare/v0.1.0...v0.1.2) (2025-09-30)
+
+
+### Bug Fixes
+
+* **ci:** allow package publishing in post release ([#38](https://github.com/groundchain/qzd-mvp/issues/38)) ([2fe2100](https://github.com/groundchain/qzd-mvp/commit/2fe21009b290e4375e05f4144989b0efc8c4e0eb))
 
 
 
