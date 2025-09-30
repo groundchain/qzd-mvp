@@ -1,3 +1,12 @@
+## [0.1.8](https://github.com/groundchain/qzd-mvp/compare/v0.1.7...v0.1.8) (2025-09-30)
+
+
+### Bug Fixes
+
+* **merchant-pos:** build sdk dependencies before bundling ([#50](https://github.com/groundchain/qzd-mvp/issues/50)) ([1356a81](https://github.com/groundchain/qzd-mvp/commit/1356a813469aab92a3ad2fb21c68e4c69bd3aef2))
+
+
+
 ## [0.1.7](https://github.com/groundchain/qzd-mvp/compare/v0.1.6...v0.1.7) (2025-09-30)
 
 
