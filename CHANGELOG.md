@@ -1,3 +1,12 @@
+## [0.1.4](https://github.com/groundchain/qzd-mvp/compare/v0.1.3...v0.1.4) (2025-09-30)
+
+
+### Bug Fixes
+
+* **docker:** use positional deploy dest ([#42](https://github.com/groundchain/qzd-mvp/issues/42)) ([bee0a62](https://github.com/groundchain/qzd-mvp/commit/bee0a62089f850a43f9220f3c4217c90f9a3c0c9))
+
+
+
 ## [0.1.3](https://github.com/groundchain/qzd-mvp/compare/v0.1.2...v0.1.3) (2025-09-30)
 
 
