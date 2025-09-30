@@ -1,4 +1,8 @@
-# 0.1.0 (2025-09-30)
+## [0.1.1](https://github.com/groundchain/qzd-mvp/compare/v0.1.0...v0.1.1) (2025-09-30)
+
+
+
+# [0.1.0](https://github.com/groundchain/qzd-mvp/compare/1e3cfa04698337b6579a0832af376324ebd291e2...v0.1.0) (2025-09-30)
 
 
 ### Bug Fixes
