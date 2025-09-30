@@ -32,3 +32,8 @@ Husky runs linting and type checking before commits, and GitHub Actions ensures 
 - The API exposes Prometheus-compatible metrics at `GET /metrics` and health probes at `GET /health/live` and `GET /health/ready`.
 - OpenTelemetry tracing is enabled by default and exports spans to an OTLP endpoint specified via `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - Run `docker compose up` to launch Prometheus on <http://localhost:9090> and Grafana on <http://localhost:3001>. Prometheus scrapes the local API instance via the `/metrics` endpoint.
+
+### Documentation site
+
+- `pnpm docs:dev` – starts VitePress on port 5170. Visit <http://localhost:5170/qzd-mvp/> to confirm the configured base path works locally.
+- `pnpm docs:build && pnpm docs:preview` – build the static site and serve the production bundle on port 8088 for end-to-end verification before deploying.
