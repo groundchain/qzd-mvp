@@ -1,3 +1,12 @@
+## [0.1.3](https://github.com/groundchain/qzd-mvp/compare/v0.1.2...v0.1.3) (2025-09-30)
+
+
+### Bug Fixes
+
+* **ci:** use repo context for docker builds ([#40](https://github.com/groundchain/qzd-mvp/issues/40)) ([f4d8ae3](https://github.com/groundchain/qzd-mvp/commit/f4d8ae3dbb7be63b88991c18f4c5a0ebbcc87b28))
+
+
+
 ## [0.1.2](https://github.com/groundchain/qzd-mvp/compare/v0.1.0...v0.1.2) (2025-09-30)
 
 
