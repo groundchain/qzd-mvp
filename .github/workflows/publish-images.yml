@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - '*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Git tag to build images for'
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -36,8 +42,23 @@ jobs:
             dockerfile: apps/sms-sim/Dockerfile
 
     steps:
+      - name: Determine tag reference
+        id: tag
+        shell: bash
+        run: |
+          set -eo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "ref=refs/tags/${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "ref=${GITHUB_REF}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
 
       - name: Normalize owner name
         run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
@@ -58,7 +79,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.IMAGE_PREFIX }}-${{ matrix.component }}
           tags: |
-            type=ref,event=tag
+            type=raw,value=${{ steps.tag.outputs.name }}
             type=raw,value=latest
 
       - name: Build and push image
