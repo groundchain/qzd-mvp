@@ -8,6 +8,7 @@
 - Follow API-first flow: update `openapi/openapi.yaml` before changing handlers, SDKs, or tests so regenerated clients stay authoritative.
 
 ## Build, Test, and Development Commands
+- Use Node.js 20 or newer across local runs and pipelines.
 - Run `pnpm gen:sdks` (or `pnpm gen:all` when types shift) before any build so sources reflect the spec.
 - `pnpm install` bootstraps dependencies; `pnpm build`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` fan out across workspaces—pair with `--filter` for focused work.
 - `pnpm --filter @qzd/api dev` starts the API; switch the filter to wallet or admin to launch Vite dev servers.
