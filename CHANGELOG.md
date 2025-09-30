@@ -1,3 +1,12 @@
+## [0.1.7](https://github.com/groundchain/qzd-mvp/compare/v0.1.6...v0.1.7) (2025-09-30)
+
+
+### Bug Fixes
+
+* **api:** build workspace deps before compile ([#48](https://github.com/groundchain/qzd-mvp/issues/48)) ([1119828](https://github.com/groundchain/qzd-mvp/commit/11198280825aec145b06c77d0d9a094acac003cc))
+
+
+
 ## [0.1.6](https://github.com/groundchain/qzd-mvp/compare/v0.1.5...v0.1.6) (2025-09-30)
 
 
