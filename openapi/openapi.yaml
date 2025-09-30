@@ -30,6 +30,8 @@ tags:
     description: Administrative visibility and alert management endpoints.
   - name: Agents
     description: Agent cash-in, cash-out, and voucher reconciliation workflows.
+  - name: Offline
+    description: Offline voucher ingestion and redemption endpoints.
   - name: Sms
     description: Inbound SMS command processing and responses.
   - name: Health
@@ -681,6 +683,85 @@ paths:
           $ref: '#/components/responses/TooManyRequestsError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  /offline/vouchers:
+    post:
+      tags:
+        - Offline
+      operationId: createOfflineVoucher
+      summary: Register an offline voucher issued by a field card.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OfflineVoucher'
+            example:
+              id: "ovch_000001"
+              fromCardId: "card_0001"
+              toAccountId: "acc_123456"
+              amount:
+                currency: QZD
+                value: '25.00'
+              nonce: "nonce-1234567890"
+              signature: "a3f0d6c4b2..."
+              expiresAt: "2024-07-01T00:00:00Z"
+              status: pending
+      responses:
+        '201':
+          description: Offline voucher registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineVoucher'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
+  /offline/vouchers/{id}/redeem:
+    post:
+      tags:
+        - Offline
+      operationId: redeemOfflineVoucher
+      summary: Redeem a previously registered offline voucher.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - name: id
+          in: path
+          description: Identifier of the offline voucher to redeem.
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Offline voucher redeemed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflineVoucher'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      security:
+        - BearerAuth: []
   /remit/us/acquire-qzd:
     post:
       tags:
@@ -1542,6 +1623,39 @@ components:
         - amount
         - required
         - collected
+        - status
+    OfflineVoucher:
+      type: object
+      properties:
+        id:
+          type: string
+        fromCardId:
+          type: string
+        toAccountId:
+          type: string
+        amount:
+          $ref: '#/components/schemas/MonetaryAmount'
+        nonce:
+          type: string
+        signature:
+          type: string
+          description: Hex-encoded Ed25519 signature issued by the card.
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+            - pending
+            - redeemed
+      required:
+        - id
+        - fromCardId
+        - toAccountId
+        - amount
+        - nonce
+        - signature
+        - expiresAt
         - status
     RedeemRequest:
       type: object

@@ -18,6 +18,17 @@ export type Transaction = {
   counterpartyAccountId?: string;
 };
 
+export type OfflineVoucher = {
+  id?: string;
+  fromCardId?: string;
+  toAccountId?: string;
+  amount?: MonetaryAmount;
+  nonce?: string;
+  signature?: string;
+  expiresAt?: string | Date;
+  status?: string;
+};
+
 export type QuoteResponse = {
   quoteId?: string;
   sellAmount?: MonetaryAmount;
@@ -63,6 +74,17 @@ export class RemittancesApi {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_config: Configuration) {}
   async simulateQuote(): Promise<QuoteResponse> {
+    return {};
+  }
+}
+
+export class OfflineApi {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_config: Configuration) {}
+  async createOfflineVoucher(): Promise<OfflineVoucher> {
+    return {};
+  }
+  async redeemOfflineVoucher(): Promise<OfflineVoucher> {
     return {};
   }
 }

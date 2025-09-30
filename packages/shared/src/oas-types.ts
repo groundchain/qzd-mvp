@@ -214,6 +214,40 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/offline/vouchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register an offline voucher issued by a field card. */
+        post: operations["createOfflineVoucher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/offline/vouchers/{id}/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a previously registered offline voucher. */
+        post: operations["redeemOfflineVoucher"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/remit/us/acquire-qzd": {
         parameters: {
             query?: never;
@@ -514,6 +548,19 @@ export type components = {
             metadata?: {
                 [key: string]: string;
             };
+        };
+        OfflineVoucher: {
+            id: string;
+            fromCardId: string;
+            toAccountId: string;
+            amount: components["schemas"]["MonetaryAmount"];
+            nonce: string;
+            /** @description Hex-encoded Ed25519 signature issued by the card. */
+            signature: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            status: "pending" | "redeemed";
         };
         RedeemRequest: {
             accountId: string;
@@ -1336,6 +1383,83 @@ export interface operations {
             400: components["responses"]["BadRequestError"];
             401: components["responses"]["UnauthorizedError"];
             403: components["responses"]["ForbiddenError"];
+            404: components["responses"]["NotFoundError"];
+            409: components["responses"]["ConflictError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createOfflineVoucher: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /** @example {
+                 *       "id": "ovch_000001",
+                 *       "fromCardId": "card_0001",
+                 *       "toAccountId": "acc_123456",
+                 *       "amount": {
+                 *         "currency": "QZD",
+                 *         "value": "25.00"
+                 *       },
+                 *       "nonce": "nonce-1234567890",
+                 *       "signature": "a3f0d6c4b2...",
+                 *       "expiresAt": "2024-07-01T00:00:00Z",
+                 *       "status": "pending"
+                 *     } */
+                "application/json": components["schemas"]["OfflineVoucher"];
+            };
+        };
+        responses: {
+            /** @description Offline voucher registered successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineVoucher"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
+            409: components["responses"]["ConflictError"];
+            429: components["responses"]["TooManyRequestsError"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    redeemOfflineVoucher: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Unique key to guarantee idempotent handling of POST requests. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKeyHeader"];
+            };
+            path: {
+                /** @description Identifier of the offline voucher to redeem. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Offline voucher redeemed successfully. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineVoucher"];
+                };
+            };
+            400: components["responses"]["BadRequestError"];
+            401: components["responses"]["UnauthorizedError"];
             404: components["responses"]["NotFoundError"];
             409: components["responses"]["ConflictError"];
             429: components["responses"]["TooManyRequestsError"];

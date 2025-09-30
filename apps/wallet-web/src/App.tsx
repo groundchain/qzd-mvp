@@ -6,10 +6,12 @@ import {
   Configuration,
   RemittancesApi,
   TransactionsApi,
+  OfflineApi,
   type Balance,
   type MonetaryAmount,
   type QuoteResponse,
   type Transaction,
+  type OfflineVoucher,
 } from '@qzd/sdk-browser';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
@@ -75,6 +77,9 @@ export default function App() {
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteScenarioResult, setQuoteScenarioResult] = useState<QuoteScenario | null>(null);
   const [quoteStatus, setQuoteStatus] = useState<AsyncStatus>('idle');
+  const [offlineVoucherInput, setOfflineVoucherInput] = useState('');
+  const [offlineVoucherStatus, setOfflineVoucherStatus] = useState<AsyncStatus>('idle');
+  const [redeemedOfflineVoucher, setRedeemedOfflineVoucher] = useState<OfflineVoucher | null>(null);
 
   const configuration = useMemo(
     () =>
@@ -89,6 +94,7 @@ export default function App() {
   const accountsApi = useMemo(() => new AccountsApi(configuration), [configuration]);
   const transactionsApi = useMemo(() => new TransactionsApi(configuration), [configuration]);
   const remittancesApi = useMemo(() => new RemittancesApi(configuration), [configuration]);
+  const offlineApi = useMemo(() => new OfflineApi(configuration), [configuration]);
 
   const resetStatus = useCallback((message: string | null) => {
     setStatusMessage(message);
@@ -213,6 +219,94 @@ export default function App() {
     [authApi, resetStatus],
   );
 
+  const handleRedeemOfflineVoucher = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!token) {
+        resetStatus('Sign in before redeeming offline vouchers.');
+        return;
+      }
+
+      const rawInput = offlineVoucherInput.trim();
+      if (!rawInput) {
+        resetStatus('Paste an offline voucher payload to redeem.');
+        return;
+      }
+
+      setRedeemedOfflineVoucher(null);
+
+      let offlineVoucherPayload: OfflineVoucher;
+      try {
+        const parsed = JSON.parse(rawInput) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Offline voucher payload must be a JSON object.');
+        }
+        const base = parsed as Partial<OfflineVoucher>;
+        const candidate = {
+          ...base,
+          status:
+            typeof base.status === 'string' && base.status.trim()
+              ? (base.status as OfflineVoucher['status'])
+              : 'pending',
+        } as OfflineVoucher;
+        if (
+          typeof candidate.id !== 'string' ||
+          typeof candidate.fromCardId !== 'string' ||
+          typeof candidate.toAccountId !== 'string'
+        ) {
+          throw new Error('Offline voucher is missing required identifiers.');
+        }
+        if (
+          !candidate.amount ||
+          typeof candidate.amount.value !== 'string' ||
+          typeof candidate.amount.currency !== 'string'
+        ) {
+          throw new Error('Offline voucher amount must include currency and value.');
+        }
+        if (typeof candidate.nonce !== 'string' || typeof candidate.signature !== 'string') {
+          throw new Error('Offline voucher nonce and signature are required.');
+        }
+        if (typeof candidate.expiresAt !== 'string') {
+          throw new Error('Offline voucher expiration must be provided.');
+        }
+        offlineVoucherPayload = candidate;
+      } catch (error) {
+        console.error('Failed to parse offline voucher payload', error);
+        resetStatus(
+          error instanceof Error ? error.message : 'Invalid offline voucher payload.',
+        );
+        return;
+      }
+
+      setOfflineVoucherStatus('pending');
+      try {
+        const createdVoucher = await offlineApi.createOfflineVoucher({
+          idempotencyKey: createIdempotencyKey(),
+          offlineVoucher: offlineVoucherPayload,
+        });
+        const voucherId = createdVoucher.id ?? offlineVoucherPayload.id;
+        if (!voucherId) {
+          throw new Error('Voucher registration succeeded without returning an id.');
+        }
+
+        const redeemedVoucher = await offlineApi.redeemOfflineVoucher({
+          id: voucherId,
+          idempotencyKey: createIdempotencyKey(),
+        });
+        setRedeemedOfflineVoucher(redeemedVoucher);
+        resetStatus(`Offline voucher ${voucherId} redeemed successfully.`);
+      } catch (error) {
+        console.error('Failed to redeem offline voucher', error);
+        resetStatus(
+          error instanceof Error ? error.message : 'Unable to redeem offline voucher.',
+        );
+      } finally {
+        setOfflineVoucherStatus('idle');
+      }
+    },
+    [offlineApi, offlineVoucherInput, resetStatus, token],
+  );
+
   const handleAccountSelection = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -318,6 +412,7 @@ export default function App() {
   const canSubmitTransfer =
     canUseAccountActions && transferDestinationValid && transferAmountValid && transferStatus !== 'pending';
   const canPreviewQuote = canUseAccountActions && quoteStatus !== 'pending';
+  const canRedeemOfflineVoucher = canUseAccountActions && offlineVoucherStatus !== 'pending';
   const scenarioToggleDisabled = !canUseAccountActions || quoteStatus === 'pending';
 
   return (
@@ -559,6 +654,63 @@ export default function App() {
                 </div>
               </dl>
             </div>
+          )}
+        </section>
+      )}
+
+      {token && (
+        <section aria-labelledby="offline-section">
+          <h2 id="offline-section">Redeem offline voucher</h2>
+          {!accountLoaded && <p>Load an account to redeem offline vouchers.</p>}
+          {accountLoaded && (
+            <form onSubmit={handleRedeemOfflineVoucher} className="offline-form">
+              <label>
+                Voucher payload
+                <textarea
+                  value={offlineVoucherInput}
+                  onChange={(event) => setOfflineVoucherInput(event.target.value)}
+                  rows={6}
+                  placeholder='{"id":"ovch_123","fromCardId":"card_001","toAccountId":"acc_123","amount":{"currency":"QZD","value":"10.00"},"nonce":"...","signature":"...","expiresAt":"2024-06-01T00:00:00Z"}'
+                  disabled={offlineVoucherStatus === 'pending'}
+                  required
+                />
+              </label>
+              <button type="submit" disabled={!canRedeemOfflineVoucher}>
+                {offlineVoucherStatus === 'pending' ? 'Redeeming…' : 'Redeem offline voucher'}
+              </button>
+            </form>
+          )}
+
+          {accountLoaded && redeemedOfflineVoucher && (
+            <div className="offline-voucher-result">
+              <h3>Redeemed voucher</h3>
+              <dl>
+                <div>
+                  <dt>Voucher ID</dt>
+                  <dd>{redeemedOfflineVoucher.id}</dd>
+                </div>
+                <div>
+                  <dt>Card</dt>
+                  <dd>{redeemedOfflineVoucher.fromCardId}</dd>
+                </div>
+                <div>
+                  <dt>Amount</dt>
+                  <dd>{formatAmount(redeemedOfflineVoucher.amount)}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{redeemedOfflineVoucher.status}</dd>
+                </div>
+                <div>
+                  <dt>Expires</dt>
+                  <dd>{formatTimestamp(redeemedOfflineVoucher.expiresAt)}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
+
+          {accountLoaded && !redeemedOfflineVoucher && offlineVoucherStatus === 'idle' && (
+            <p>No offline voucher redeemed yet.</p>
           )}
         </section>
       )}
