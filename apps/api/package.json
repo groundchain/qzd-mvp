@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "pnpm --filter @qzd/ledger build && pnpm --filter @qzd/sdk-api build",
-    "build": "tsc -p tsconfig.build.json",
+    "prebuild": "pnpm --filter @qzd/shared build && pnpm --filter @qzd/card-mock build && pnpm --filter @qzd/ledger build && pnpm --filter @qzd/sdk-api build",
+    "build": "pnpm run prebuild && tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "dev": "node --loader ts-node/esm --experimental-specifier-resolution=node src/main.ts",
     "test": "vitest run",
