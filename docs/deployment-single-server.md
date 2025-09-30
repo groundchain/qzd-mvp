@@ -57,13 +57,19 @@ Internet
    newgrp docker
    docker compose version
    ```
-6. **Node.js (optional, for local builds)**
+6. **Authenticate with GitHub Container Registry (GHCR)**
+   ```sh
+   echo "<github-token>" | docker login ghcr.io -u <github-org-or-user> --password-stdin
+   ```
+   Replace `<github-token>` with a fine-grained personal access token or GitHub CLI token that has the `read:packages` scope.
+
+7. **Node.js (optional, for local builds)**
    ```sh
    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
    sudo apt install -y nodejs
    node --version
    ```
-7. **Nginx** (used only for initial ACME challenges if webroot mode is required; main proxy runs in Docker)
+8. **Nginx** (used only for initial ACME challenges if webroot mode is required; main proxy runs in Docker)
    ```sh
    sudo apt install -y nginx
    sudo systemctl disable --now nginx
@@ -140,7 +146,7 @@ services:
       - qzd
 
   api:
-    image: registry.example.com/qzd/api:latest
+    image: ghcr.io/<github-org-or-user>/qzd-api:latest
     restart: unless-stopped
     env_file:
       - ../env/.env
@@ -159,7 +165,7 @@ services:
       - qzd
 
   wallet:
-    image: registry.example.com/qzd/wallet-web:latest
+    image: ghcr.io/<github-org-or-user>/qzd-wallet-web:latest
     restart: unless-stopped
     environment:
       PORT: 8080
@@ -172,7 +178,7 @@ services:
       - qzd
 
   admin:
-    image: registry.example.com/qzd/admin-web:latest
+    image: ghcr.io/<github-org-or-user>/qzd-admin-web:latest
     restart: unless-stopped
     environment:
       PORT: 8080
@@ -185,7 +191,7 @@ services:
       - qzd
 
   pos:
-    image: registry.example.com/qzd/merchant-pos:latest
+    image: ghcr.io/<github-org-or-user>/qzd-merchant-pos:latest
     restart: unless-stopped
     environment:
       PORT: 8080
@@ -269,7 +275,19 @@ networks:
     driver: bridge
 ```
 
-> **Note:** Use build directives or specific image tags (`:gitsha`) when publishing images. Wallet/admin/pos containers should serve production builds via Nginx or Caddy using port 8080 internally.
+> **Note:** Replace `<github-org-or-user>` with your GitHub organization or username. Release pipelines described below publish each deployable image to GitHub Container Registry (GHCR) with the tag that triggered the workflow (for example, `ghcr.io/example/qzd-api:v1.4.0`) and update the `latest` tag. Wallet/admin/pos containers should serve production builds via Nginx using port 8080 internally.
+
+### 5.1 Automated image publishing
+
+This repository ships with a GitHub Actions workflow that builds and pushes the API, SPA, and simulator containers to GHCR every time a new Git tag is created (for example, `v1.4.0`). After pushing a tag to GitHub:
+
+1. The workflow logs into GHCR using the repository's `GITHUB_TOKEN` with `packages: write` scope.
+2. Each application Dockerfile (`apps/api`, `apps/wallet-web`, `apps/admin-web`, `apps/merchant-pos`, and `apps/sms-sim`) is built with Docker Buildx.
+3. Two tags are published per image:
+   - `ghcr.io/<github-org-or-user>/qzd-<component>:<tag>`
+   - `ghcr.io/<github-org-or-user>/qzd-<component>:latest`
+
+Once the workflow succeeds, update the Compose file to reference the matching tag (for example, `qzd-api:v1.4.0`) instead of `latest` for deterministic rollouts.
 
 ## 6. Nginx Reverse Proxy (`/opt/qzd/nginx/nginx.conf`)
 
