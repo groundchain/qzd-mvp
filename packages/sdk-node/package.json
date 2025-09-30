@@ -1,6 +1,6 @@
 {
   "name": "@qzd/sdk-node",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,7 +10,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prebuild": "pnpm --filter @qzd/sdk-api build",
     "build": "tsup src/index.ts --dts --format esm --out-dir dist --clean",
