@@ -26,7 +26,9 @@
       "@qzd/sdk-browser": ["packages/sdk-browser/src/index.ts"],
       "@qzd/sdk-browser/*": ["packages/sdk-browser/src/*.ts"],
       "@qzd/sdk-api": ["packages/sdk-api/src/index.ts"],
-      "@qzd/sdk-api/*": ["packages/sdk-api/src/*"]
+      "@qzd/sdk-api/*": ["packages/sdk-api/src/*"],
+      "@qzd/card-mock": ["packages/card-mock/src/index.ts"],
+      "@qzd/card-mock/*": ["packages/card-mock/src/*.ts"]
     }
   }
 }

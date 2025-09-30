@@ -27,5 +27,8 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: /load account/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /send transfer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /preview quote/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /redeem offline voucher/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
 import { InMemoryBankService, getFallbackBankService } from './in-memory-bank.service.js';
 import { createSignaturePayload, serializeBody } from './request-security.js';
+import { createMockCardKeys, createOfflineVoucher } from '@qzd/card-mock';
 
 const DEV_SIGNING_PRIVATE_KEY_HEX =
   '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
@@ -295,6 +296,91 @@ describe('Wallet flows', () => {
     expect(items[0]?.type).toBe('redemption');
     expect(items[0]?.metadata?.voucherCode).toBe(voucherCode);
     expect(items[1]?.metadata?.feeValue).toBe('0.50');
+  });
+
+  it('processes offline vouchers and blocks replayed redemption', async () => {
+    const email = `offline${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Offline User';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const { request: registerRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+    );
+    const registerResponse = await registerRequest.send(registerBody).expect(201);
+    const registerPayload = getResponseBody<{
+      token?: string;
+      account?: { id?: string };
+    }>(registerResponse);
+
+    const token = registerPayload.token as string;
+    const accountId = registerPayload.account?.id as string;
+    expect(token).toBeTruthy();
+    expect(accountId).toBeTruthy();
+
+    const card = createMockCardKeys('card-offline-1');
+    bank.registerOfflineCard(card.id, card.publicKeyHex);
+
+    const voucherDraft = {
+      id: `ovch_${Date.now()}`,
+      fromCardId: card.id,
+      toAccountId: accountId,
+      amount: { currency: 'QZD', value: '15.00' },
+      nonce: `nonce-${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    } as const;
+    const signedVoucher = createOfflineVoucher(voucherDraft, card.privateKeyHex);
+
+    const { request: createVoucherRequest } = applySecurity(
+      client().post('/offline/vouchers'),
+      'POST',
+      '/offline/vouchers',
+      signedVoucher,
+    );
+    const createVoucherResponse = await createVoucherRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(signedVoucher)
+      .expect(201);
+    const createVoucherPayload = getResponseBody<{ id?: string; status?: string }>(createVoucherResponse);
+    expect(createVoucherPayload.id).toBe(voucherDraft.id);
+    expect(createVoucherPayload.status).toBe('pending');
+
+    const { request: duplicateRequest } = applySecurity(
+      client().post('/offline/vouchers'),
+      'POST',
+      '/offline/vouchers',
+      signedVoucher,
+    );
+    await duplicateRequest
+      .set('Authorization', `Bearer ${token}`)
+      .send(signedVoucher)
+      .expect(409);
+
+    const redeemPath = `/offline/vouchers/${voucherDraft.id}/redeem`;
+    const { request: redeemRequest } = applySecurity(
+      client().post(redeemPath),
+      'POST',
+      redeemPath,
+      null,
+    );
+    const redeemResponse = await redeemRequest
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+    const redeemPayload = getResponseBody<{ status?: string; id?: string }>(redeemResponse);
+    expect(redeemPayload.status).toBe('redeemed');
+    expect(redeemPayload.id).toBe(voucherDraft.id);
+
+    const { request: replayRedeemRequest } = applySecurity(
+      client().post(redeemPath),
+      'POST',
+      redeemPath,
+      null,
+    );
+    await replayRedeemRequest.set('Authorization', `Bearer ${token}`).expect(409);
   });
 
   it('rejects replayed requests with the same nonce', async () => {

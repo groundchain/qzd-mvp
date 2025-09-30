@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { randomUUID, randomBytes } from 'node:crypto';
 import type { Request } from 'express';
+import { ed25519 } from '@noble/curves/ed25519';
+import { hexToBytes } from '@noble/curves/abstract/utils';
 import type {
   AgentCashInRequest,
   AgentCashOutRequest,
@@ -22,6 +24,7 @@ import type {
   LoginUser200Response,
   LoginUserRequest,
   MonetaryAmount,
+  OfflineVoucher,
   RegisterUser201Response,
   RegisterUserRequest,
   SignIssuanceRequestRequest,
@@ -32,6 +35,7 @@ import type {
   SmsInboundResponse,
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
+import { createOfflineVoucherPayload } from '@qzd/card-mock';
 import { RequestSecurityManager, type ValidatedMutationContext } from './request-security.js';
 import { recordTransactionMetric } from './observability/metrics.js';
 
@@ -92,6 +96,22 @@ type VoucherRecord = {
   createdAt: string;
   redeemedAt?: string;
   metadata: Record<string, string>;
+};
+
+type OfflineVoucherStatus = OfflineVoucher['status'];
+
+type OfflineVoucherRecord = {
+  id: string;
+  fromCardId: string;
+  toAccountId: string;
+  currency: string;
+  amount: number;
+  nonce: string;
+  signature: string;
+  expiresAt: string;
+  status: OfflineVoucherStatus;
+  createdAt: string;
+  redeemedAt?: string;
 };
 
 type AlertSeverity = Alert['severity'];
@@ -164,6 +184,7 @@ const VELOCITY_COUNT = 5;
 const VELOCITY_WINDOW_MS = 2 * 60 * 1000;
 const NEW_ACCOUNT_THRESHOLD = 5;
 const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
+const HEX_PATTERN = /^([0-9a-fA-F]{2})+$/;
 
 @Injectable()
 export class InMemoryBankService {
@@ -175,6 +196,9 @@ export class InMemoryBankService {
   private readonly issuanceRequests = new Map<string, IssuanceRequestRecord>();
   private readonly issuanceOrder: string[] = [];
   private readonly vouchers = new Map<string, VoucherRecord>();
+  private readonly offlineVouchers = new Map<string, OfflineVoucherRecord>();
+  private readonly offlineVoucherNonces = new Map<string, string>();
+  private readonly offlineCardPublicKeys = new Map<string, Uint8Array>();
   private readonly smsAccounts = new Map<string, string>();
   private readonly security = new RequestSecurityManager();
   private readonly alerts = new Map<string, AlertRecord>();
@@ -560,6 +584,182 @@ export class InMemoryBankService {
       this.prependTransaction(account.id, transaction);
 
       return this.toVoucher(record);
+    });
+  }
+
+  registerOfflineCard(cardId: string, publicKeyHex: string): void {
+    const normalizedId = cardId?.trim();
+    const normalizedKey = publicKeyHex?.trim();
+    if (!normalizedId) {
+      throw new Error('cardId is required to register an offline card');
+    }
+    if (!normalizedKey || !HEX_PATTERN.test(normalizedKey)) {
+      throw new Error('publicKeyHex must be a hex-encoded string');
+    }
+
+    this.offlineCardPublicKeys.set(normalizedId, hexToBytes(normalizedKey));
+  }
+
+  createOfflineVoucher(request: OfflineVoucher, actor: Request): OfflineVoucher {
+    const context = this.security.validateMutation(actor, request);
+    const user = this.requireUser(actor);
+    return this.security.applyIdempotency(context, () => {
+      const id = request.id?.trim();
+      const fromCardId = request.fromCardId?.trim();
+      const toAccountId = request.toAccountId?.trim();
+      const nonce = request.nonce?.trim();
+      const signature = request.signature?.trim();
+      const expiresAtRaw = request.expiresAt?.trim();
+      const amountValueRaw = request.amount?.value;
+      const amountCurrencyRaw = request.amount?.currency;
+      const status = request.status?.trim();
+
+      if (!id) {
+        throw new BadRequestException('id is required');
+      }
+      if (this.offlineVouchers.has(id)) {
+        throw new ConflictException('Offline voucher already registered');
+      }
+      if (!fromCardId) {
+        throw new BadRequestException('fromCardId is required');
+      }
+      if (!toAccountId) {
+        throw new BadRequestException('toAccountId is required');
+      }
+      if (!nonce) {
+        throw new BadRequestException('nonce is required');
+      }
+      if (!signature) {
+        throw new BadRequestException('signature is required');
+      }
+      if (!expiresAtRaw) {
+        throw new BadRequestException('expiresAt is required');
+      }
+      if (status && status !== 'pending') {
+        throw new BadRequestException('status must be pending during registration');
+      }
+
+      const amountValue = amountValueRaw?.trim();
+      if (!amountValue) {
+        throw new BadRequestException('amount value is required');
+      }
+
+      const account = this.requireAccount(toAccountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
+
+      const currency = amountCurrencyRaw?.trim() || account.currency;
+      if (currency !== account.currency) {
+        throw new BadRequestException('Currency mismatch with account');
+      }
+
+      const nonceKey = `${fromCardId}:${nonce}`;
+      if (this.offlineVoucherNonces.has(nonceKey)) {
+        throw new ConflictException('Offline voucher nonce already used');
+      }
+
+      if (!HEX_PATTERN.test(signature)) {
+        throw new BadRequestException('signature must be a hex-encoded string');
+      }
+
+      const publicKey = this.offlineCardPublicKeys.get(fromCardId);
+      if (!publicKey) {
+        throw new BadRequestException('Unknown offline card identifier');
+      }
+
+      const expiresAtDate = new Date(expiresAtRaw);
+      if (Number.isNaN(expiresAtDate.getTime())) {
+        throw new BadRequestException('expiresAt must be a valid ISO 8601 timestamp');
+      }
+      const now = Date.now();
+      if (expiresAtDate.getTime() <= now) {
+        throw new ConflictException('Offline voucher has expired');
+      }
+
+      const payload = createOfflineVoucherPayload({
+        id,
+        fromCardId,
+        toAccountId,
+        amount: { currency, value: amountValue },
+        nonce,
+        expiresAt: expiresAtRaw,
+      });
+      const signatureBytes = hexToBytes(signature);
+      const isValid = ed25519.verify(signatureBytes, payload, publicKey);
+      if (!isValid) {
+        throw new UnauthorizedException('Offline voucher signature is invalid');
+      }
+
+      const amount = this.parsePositiveAmount(amountValue);
+      const createdAt = new Date(now).toISOString();
+      const record: OfflineVoucherRecord = {
+        id,
+        fromCardId,
+        toAccountId,
+        currency,
+        amount,
+        nonce,
+        signature: signature.toLowerCase(),
+        expiresAt: expiresAtDate.toISOString(),
+        status: 'pending',
+        createdAt,
+      } satisfies OfflineVoucherRecord;
+
+      this.offlineVouchers.set(id, record);
+      this.offlineVoucherNonces.set(nonceKey, id);
+
+      return this.toOfflineVoucher(record);
+    });
+  }
+
+  redeemOfflineVoucher(id: string, actor: Request): OfflineVoucher {
+    const context = this.security.validateMutation(actor, undefined);
+    const user = this.requireUser(actor);
+    return this.security.applyIdempotency(context, () => {
+      const normalizedId = id?.trim();
+      if (!normalizedId) {
+        throw new BadRequestException('id is required');
+      }
+
+      const record = this.requireOfflineVoucher(normalizedId);
+      if (record.status === 'redeemed') {
+        throw new ConflictException('Offline voucher already redeemed');
+      }
+
+      const expiresAt = new Date(record.expiresAt);
+      if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
+        throw new ConflictException('Offline voucher has expired');
+      }
+
+      const account = this.requireAccount(record.toAccountId);
+      if (account.ownerId !== user.id) {
+        throw new ForbiddenException('You do not have access to this account');
+      }
+
+      const redeemedAt = new Date().toISOString();
+      account.balance = this.round(account.balance + record.amount);
+      account.updatedAt = redeemedAt;
+      record.status = 'redeemed';
+      record.redeemedAt = redeemedAt;
+
+      const transaction: Transaction = {
+        id: this.buildId('txn', this.transactionSequence++),
+        accountId: account.id,
+        type: 'credit',
+        status: 'posted',
+        amount: this.monetary(record.amount, record.currency),
+        createdAt: redeemedAt,
+        metadata: {
+          direction: 'incoming',
+          offlineVoucherId: record.id,
+          fromCardId: record.fromCardId,
+        },
+      } satisfies Transaction;
+
+      this.prependTransaction(account.id, transaction);
+
+      return this.toOfflineVoucher(record);
     });
   }
 
@@ -1247,6 +1447,14 @@ export class InMemoryBankService {
     return voucher;
   }
 
+  private requireOfflineVoucher(id: string): OfflineVoucherRecord {
+    const voucher = this.offlineVouchers.get(id);
+    if (!voucher) {
+      throw new NotFoundException('Offline voucher not found');
+    }
+    return voucher;
+  }
+
   private issueToken(userId: string): string {
     const token = this.generateToken();
     this.tokens.set(token, { token, userId, expiresAt: Date.now() + TOKEN_TTL_MS });
@@ -1299,6 +1507,19 @@ export class InMemoryBankService {
       redeemedAt: record.redeemedAt,
       metadata,
     } satisfies Voucher;
+  }
+
+  private toOfflineVoucher(record: OfflineVoucherRecord): OfflineVoucher {
+    return {
+      id: record.id,
+      fromCardId: record.fromCardId,
+      toAccountId: record.toAccountId,
+      amount: this.monetary(record.amount, record.currency),
+      nonce: record.nonce,
+      signature: record.signature,
+      expiresAt: record.expiresAt,
+      status: record.status,
+    } satisfies OfflineVoucher;
   }
 
   private monetary(amount: number, currency: string): MonetaryAmount {

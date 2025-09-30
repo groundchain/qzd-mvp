@@ -24,12 +24,20 @@ export default defineConfig({
         replacement: `${sharedSrcDir}$1`
       },
       {
-        find: /^@qzd\/ledger$/,
+        find: /^@qzd\/ledger$/, 
         replacement: fileURLToPath(new URL('../../packages/ledger/src/index.ts', import.meta.url))
       },
       {
-        find: /^@qzd\/ledger\/(.*)$/,
+        find: /^@qzd\/ledger\/(.*)$/, 
         replacement: fileURLToPath(new URL(`../../packages/ledger/src/$1`, import.meta.url))
+      },
+      {
+        find: /^@qzd\/card-mock$/, 
+        replacement: fileURLToPath(new URL('../../packages/card-mock/src/index.ts', import.meta.url))
+      },
+      {
+        find: /^@qzd\/card-mock\/(.*)$/, 
+        replacement: fileURLToPath(new URL(`../../packages/card-mock/src/$1`, import.meta.url))
       },
       {
         find: /^@qzd\/sdk-api\/server$/,

@@ -24,6 +24,7 @@
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
+    "@qzd/card-mock": "workspace:*",
     "@qzd/ledger": "workspace:*",
     "@qzd/sdk-api": "workspace:*",
     "@qzd/shared": "workspace:*",
