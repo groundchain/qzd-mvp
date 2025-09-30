@@ -26,7 +26,7 @@ RUN pnpm install --offline --frozen-lockfile
 
 FROM deps AS build
 RUN pnpm --filter @qzd/api build
-RUN pnpm --filter @qzd/api deploy --prod --dest /app/api
+RUN pnpm --filter @qzd/api deploy --prod /app/api
 
 FROM node:20-alpine AS runner
 WORKDIR /app
