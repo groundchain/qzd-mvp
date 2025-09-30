@@ -26,19 +26,19 @@ jobs:
       matrix:
         include:
           - component: api
-            context: apps/api
+            context: .
             dockerfile: apps/api/Dockerfile
           - component: wallet-web
-            context: apps/wallet-web
+            context: .
             dockerfile: apps/wallet-web/Dockerfile
           - component: admin-web
-            context: apps/admin-web
+            context: .
             dockerfile: apps/admin-web/Dockerfile
           - component: merchant-pos
-            context: apps/merchant-pos
+            context: .
             dockerfile: apps/merchant-pos/Dockerfile
           - component: sms-sim
-            context: apps/sms-sim
+            context: .
             dockerfile: apps/sms-sim/Dockerfile
 
     steps:
