@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QZD API – Redoc</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        font-family:
+          'Inter',
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      .topbar {
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .topbar a {
+        color: inherit;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      redoc {
+        height: calc(100vh - 56px);
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <span>QZD OpenAPI reference</span>
+      <a href="./index.html">Back to docs hub</a>
+    </header>
+    <redoc spec-url="./openapi.yaml"></redoc>
+  </body>
+</html>
