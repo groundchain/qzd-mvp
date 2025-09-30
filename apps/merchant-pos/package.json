@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "pnpm gen:sdks && pnpm --filter @qzd/sdk-api build && pnpm --filter @qzd/sdk-browser build",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
