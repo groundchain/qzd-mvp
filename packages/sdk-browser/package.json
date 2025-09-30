@@ -14,8 +14,7 @@
     "dist"
   ],
   "scripts": {
-    "prebuild": "pnpm --filter @qzd/sdk-api build",
-    "build": "tsup src/index.ts --dts --format esm --out-dir dist --clean",
+    "build": "pnpm --filter @qzd/sdk-api run build && tsup src/index.ts --dts --format esm --out-dir dist --clean",
     "test": "vitest run",
     "test:contract": "vitest run tests/contract.test.ts",
     "lint": "eslint --no-warn-ignored \"src/**/*.ts\"",
