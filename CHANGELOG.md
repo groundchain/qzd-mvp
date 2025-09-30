@@ -1,3 +1,12 @@
+## [0.1.5](https://github.com/groundchain/qzd-mvp/compare/v0.1.4...v0.1.5) (2025-09-30)
+
+
+### Bug Fixes
+
+* **merchant-pos:** generate sdk before build ([#44](https://github.com/groundchain/qzd-mvp/issues/44)) ([a0bf605](https://github.com/groundchain/qzd-mvp/commit/a0bf605aa814d9993c11c2efb0472a2bc5cfe61e))
+
+
+
 ## [0.1.4](https://github.com/groundchain/qzd-mvp/compare/v0.1.3...v0.1.4) (2025-09-30)
 
 
