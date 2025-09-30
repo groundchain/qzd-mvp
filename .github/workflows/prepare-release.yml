@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate SDK clients
+        run: pnpm run gen:sdks
+
       - name: Calculate next version
         id: bump
         run: |
