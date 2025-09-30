@@ -65,3 +65,10 @@ jobs:
 
             ---
             _Automated release preparation._
+
+      - name: Delete release branch on failure
+        if: ${{ failure() && steps.bump.outputs.version != '' }}
+        run: |
+          if git ls-remote --exit-code --heads origin "release/v${{ steps.bump.outputs.version }}" > /dev/null; then
+            git push origin --delete "release/v${{ steps.bump.outputs.version }}"
+          fi
