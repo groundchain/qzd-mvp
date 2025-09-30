@@ -23,7 +23,7 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile
-RUN pnpm --filter @qzd/sms-sim deploy --prod --dest /app/sms-sim
+RUN pnpm --filter @qzd/sms-sim deploy --prod /app/sms-sim
 
 FROM node:20-alpine
 WORKDIR /app
