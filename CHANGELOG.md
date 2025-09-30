@@ -1,3 +1,12 @@
+## [0.1.6](https://github.com/groundchain/qzd-mvp/compare/v0.1.5...v0.1.6) (2025-09-30)
+
+
+### Bug Fixes
+
+* **build:** ensure sdk packages compile before web builds ([#46](https://github.com/groundchain/qzd-mvp/issues/46)) ([913cb69](https://github.com/groundchain/qzd-mvp/commit/913cb69b8e9ab1660be93ca2a47ba24340c01a85))
+
+
+
 ## [0.1.5](https://github.com/groundchain/qzd-mvp/compare/v0.1.4...v0.1.5) (2025-09-30)
 
 
