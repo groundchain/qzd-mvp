@@ -30,8 +30,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate SDK clients
+        run: pnpm run gen:sdks
 
       - name: Calculate next version
         id: bump
@@ -59,3 +65,10 @@ jobs:
 
             ---
             _Automated release preparation._
+
+      - name: Delete release branch on failure
+        if: ${{ failure() && steps.bump.outputs.version != '' }}
+        run: |
+          if git ls-remote --exit-code --heads origin "release/v${{ steps.bump.outputs.version }}" > /dev/null; then
+            git push origin --delete "release/v${{ steps.bump.outputs.version }}"
+          fi
