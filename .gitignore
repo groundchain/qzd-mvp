@@ -3,6 +3,8 @@ node_modules
 .DS_Store
 dist
 openapi/dist
+docs/.vitepress/cache
+docs/.vitepress/dist
 apps/api/src/generated
 packages/sdk-browser/src/generated
 packages/sdk-node/src/generated

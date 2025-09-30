@@ -1,6 +1,6 @@
 # API Workflow Guide
 
-The Quetzal Digital API is defined in [`openapi/openapi.yaml`](../openapi/openapi.yaml).
+The Quetzal Digital API is defined in [`openapi/openapi.yaml`](https://github.com/groundchain/qzd-mvp/blob/main/openapi/openapi.yaml).
 All server handlers, SDKs, contract tests, and external documentation are generated
 from this source of truth. Follow the workflow below whenever you need to change
 an endpoint or schema.
