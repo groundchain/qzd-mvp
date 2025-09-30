@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -6,7 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
         margin: 0;
         padding: 3rem 1.5rem;
         background: #0f172a;
@@ -28,6 +33,11 @@
         margin-top: 0;
         font-size: 2.5rem;
         letter-spacing: 0.04em;
+      }
+      h2 {
+        margin-top: 2rem;
+        font-size: 1.5rem;
+        letter-spacing: 0.02em;
       }
       p {
         line-height: 1.6;
@@ -54,23 +64,40 @@
     <main>
       <h1>Quetzal Digital Developer Hub</h1>
       <p>
-        Welcome to the Quetzal Digital developer experience stack. This lightweight
-        documentation portal is served via the <code>docs</code> service inside the
-        development Docker Compose file.
+        This portal is served from the <code>docs</code> service defined in
+        <code>docker-compose.yaml</code>. Use it as the starting point for onboarding, contract
+        updates, and operational playbooks.
       </p>
-      <p>
-        Explore the available surfaces while the stack is running:
-      </p>
+
+      <h2>Core references</h2>
+      <ul>
+        <li><a href="api-readme.md">API workflow guide</a></li>
+        <li><a href="architecture.md">System architecture overview</a></li>
+        <li><a href="runbook.md">Operations runbook</a></li>
+        <li><a href="contrib.md">Contributor checklist</a></li>
+        <li><a href="redoc.html">OpenAPI (Redoc)</a></li>
+      </ul>
+
+      <h2>Actor manuals</h2>
+      <ul>
+        <li><a href="manuals/wallet-user.md">Wallet user</a></li>
+        <li><a href="manuals/admin-operator.md">Admin operator</a></li>
+        <li><a href="manuals/merchant-operator.md">Merchant POS operator</a></li>
+        <li><a href="manuals/sms-operator.md">SMS operations</a></li>
+      </ul>
+
+      <h2>Runtime surfaces</h2>
       <ul>
         <li><a href="http://localhost:3000">API (NestJS)</a></li>
-        <li><a href="http://localhost:5173">Wallet Web (Vite)</a></li>
-        <li><a href="http://localhost:5174">Admin Web (Vite)</a></li>
-        <li><a href="http://localhost:4010">Prism Mock Server</a></li>
-        <li><a href="http://localhost:8080">Docs (this site)</a></li>
+        <li><a href="http://localhost:5173">Wallet web</a></li>
+        <li><a href="http://localhost:5174">Admin web</a></li>
+        <li>Merchant POS (start locally on port 5175)</li>
+        <li><a href="http://localhost:4010">Prism mock server</a></li>
       </ul>
+
       <p>
-        Use <code>make dev</code> to launch the full developer stack or
-        <code>make mock</code> when you only need the mock services.
+        Use <code>make dev</code> to launch the full stack or <code>make mock</code> to start only
+        the API + mock infrastructure.
       </p>
     </main>
   </body>

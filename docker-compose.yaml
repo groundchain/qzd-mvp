@@ -135,6 +135,7 @@ services:
     image: nginx:1.25-alpine
     volumes:
       - ./docs:/usr/share/nginx/html:ro
+      - ./openapi/openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
     ports:
       - "8080:80"
     restart: unless-stopped
