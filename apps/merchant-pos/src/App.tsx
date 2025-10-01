@@ -71,6 +71,7 @@ export default function App(): JSX.Element {
   const [authStatus, setAuthStatus] = useState<AsyncStatus>('idle');
   const [invoiceStatus, setInvoiceStatus] = useState<AsyncStatus>('idle');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [authenticatedEmail, setAuthenticatedEmail] = useState<string | null>(null);
   const [form, setForm] = useState<InvoiceFormState>({
     amountValue: '25.00',
     currency: 'QZD',
@@ -129,6 +130,7 @@ export default function App(): JSX.Element {
         const newAccountId = response.account?.id ?? '';
 
         setToken(sessionToken);
+        setAuthenticatedEmail(email);
         setAccountIdInput(newAccountId);
         setAccountId(newAccountId);
         resetStatus(
@@ -175,6 +177,10 @@ export default function App(): JSX.Element {
         }
 
         setToken(sessionToken);
+        setAuthenticatedEmail(email);
+        setAccountId('');
+        setAccountIdInput('');
+        setInvoices([]);
         resetStatus('Logged in successfully.');
       } catch (error) {
         console.error('Login failed', error);
@@ -189,6 +195,10 @@ export default function App(): JSX.Element {
   const handleAccountSelection = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (!token) {
+        resetStatus('Sign in before monitoring an account.');
+        return;
+      }
       const nextId = accountIdInput.trim();
       setAccountId(nextId);
       if (nextId) {
@@ -200,9 +210,9 @@ export default function App(): JSX.Element {
         resetStatus('Enter an account ID to monitor invoices.');
         return;
       }
-      resetStatus(null);
+      resetStatus(`Monitoring account ${nextId}. Waiting for payments…`);
     },
-    [accountIdInput, resetStatus],
+    [accountIdInput, resetStatus, token],
   );
 
   const handleInvoiceFieldChange = useCallback(<Field extends keyof InvoiceFormState>(field: Field, value: string) => {
@@ -370,6 +380,16 @@ export default function App(): JSX.Element {
   }, []);
 
   const canManageInvoices = Boolean(token && accountId);
+  const isAuthenticated = Boolean(token);
+
+  const handleLogout = useCallback(() => {
+    setToken(null);
+    setAuthenticatedEmail(null);
+    setAccountId('');
+    setAccountIdInput('');
+    setInvoices([]);
+    resetStatus('Signed out.');
+  }, [resetStatus]);
 
   return (
     <main>
@@ -382,47 +402,59 @@ export default function App(): JSX.Element {
 
       <section aria-labelledby="auth-section">
         <h2 id="auth-section">Merchant access</h2>
-        <div className="auth-layout">
-          <form onSubmit={handleRegister} className="auth-form">
-            <h3>Create merchant</h3>
-            <label>
-              Full name
-              <input name="register-name" placeholder="Ada Lovelace" disabled={authStatus === 'pending'} required />
-            </label>
-            <label>
-              Email
-              <input
-                type="email"
-                name="register-email"
-                placeholder="merchant@example.com"
-                disabled={authStatus === 'pending'}
-                required
-              />
-            </label>
-            <label>
-              Password
-              <input type="password" name="register-password" disabled={authStatus === 'pending'} required />
-            </label>
-            <button type="submit" disabled={authStatus === 'pending'}>
-              {authStatus === 'pending' ? 'Submitting…' : 'Register & sign in'}
+        {isAuthenticated ? (
+          <div className="auth-summary">
+            <p>
+              Signed in{authenticatedEmail ? ` as ${authenticatedEmail}` : ''}. Enter a settlement account ID below to
+              monitor invoices.
+            </p>
+            <button type="button" onClick={handleLogout}>
+              Sign out
             </button>
-          </form>
+          </div>
+        ) : (
+          <div className="auth-layout">
+            <form onSubmit={handleRegister} className="auth-form">
+              <h3>Create merchant</h3>
+              <label>
+                Full name
+                <input name="register-name" placeholder="Ada Lovelace" disabled={authStatus === 'pending'} required />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  name="register-email"
+                  placeholder="merchant@example.com"
+                  disabled={authStatus === 'pending'}
+                  required
+                />
+              </label>
+              <label>
+                Password
+                <input type="password" name="register-password" disabled={authStatus === 'pending'} required />
+              </label>
+              <button type="submit" disabled={authStatus === 'pending'}>
+                {authStatus === 'pending' ? 'Submitting…' : 'Register & sign in'}
+              </button>
+            </form>
 
-          <form onSubmit={handleLogin} className="auth-form">
-            <h3>Sign in</h3>
-            <label>
-              Email
-              <input type="email" name="login-email" disabled={authStatus === 'pending'} required />
-            </label>
-            <label>
-              Password
-              <input type="password" name="login-password" disabled={authStatus === 'pending'} required />
-            </label>
-            <button type="submit" disabled={authStatus === 'pending'}>
-              {authStatus === 'pending' ? 'Verifying…' : 'Sign in'}
-            </button>
-          </form>
-        </div>
+            <form onSubmit={handleLogin} className="auth-form">
+              <h3>Sign in</h3>
+              <label>
+                Email
+                <input type="email" name="login-email" disabled={authStatus === 'pending'} required />
+              </label>
+              <label>
+                Password
+                <input type="password" name="login-password" disabled={authStatus === 'pending'} required />
+              </label>
+              <button type="submit" disabled={authStatus === 'pending'}>
+                {authStatus === 'pending' ? 'Verifying…' : 'Sign in'}
+              </button>
+            </form>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="account-section">
@@ -434,9 +466,12 @@ export default function App(): JSX.Element {
               value={accountIdInput}
               onChange={(event) => setAccountIdInput(event.target.value)}
               placeholder="acc_12345"
+              disabled={!isAuthenticated}
             />
           </label>
-          <button type="submit">Monitor account</button>
+          <button type="submit" disabled={!isAuthenticated || !accountIdInput.trim()}>
+            Monitor account
+          </button>
         </form>
         <p>
           API: <code>{configuredBaseUrl}</code>

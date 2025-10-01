@@ -51,6 +51,23 @@ form {
   gap: 1.5rem;
 }
 
+.auth-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid #e0e7ff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background-color: #f9fbff;
+}
+
+.auth-summary p {
+  margin: 0;
+  font-weight: 600;
+}
+
 @media (min-width: 768px) {
   .auth-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
