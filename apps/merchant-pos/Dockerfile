@@ -3,7 +3,7 @@ FROM node:20-alpine AS base
 WORKDIR /workspace
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN apk add --no-cache libc6-compat python3 make g++ \
+RUN apk add --no-cache libc6-compat python3 make g++ openjdk17-jre-headless \
   && corepack enable
 
 FROM base AS build

@@ -39,7 +39,7 @@
   ],
   "scripts": {
     "generate": "pnpm --dir ../../ run gen:sdks",
-    "build": "pnpm run generate && tsc -p tsconfig.build.json",
+    "build": "node ../../scripts/ensure-sdk-api-generated.mjs && tsc -p tsconfig.build.json",
     "lint": "eslint --no-warn-ignored \"src/**/*.ts\" --ignore-pattern \"src/**/generated/**\"",
     "typecheck": "node ../../scripts/ensure-sdk-api-generated.mjs && tsc --noEmit"
   },
