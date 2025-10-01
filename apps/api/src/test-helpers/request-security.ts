@@ -1,8 +1,11 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import supertest from 'supertest';
 import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import {
+  DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX,
+  DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX,
+  createIdempotencyKey,
   createSignaturePayloadFromComponents as createSignaturePayload,
   serializeBody,
 } from '@qzd/shared/request-security';
@@ -31,12 +34,8 @@ interface SecurityHeaders {
   signature: string;
 }
 
-const DEV_SIGNING_PRIVATE_KEY_HEX =
-  '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
-
-const DEV_SIGNING_PUBLIC_KEY_HEX = bytesToHex(
-  ed25519.getPublicKey(hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)),
-);
+const DEV_SIGNING_PRIVATE_KEY_BYTES = hexToBytes(DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX);
+const DEV_SIGNING_PUBLIC_KEY_HEX = DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX;
 
 function buildSecurityHeaders(
   method: string,
@@ -44,7 +43,7 @@ function buildSecurityHeaders(
   body: unknown,
   overrides: SecurityOverrides = {},
 ): SecurityHeaders {
-  const idempotencyKey = overrides.idempotencyKey ?? `idem-${randomUUID()}`;
+  const idempotencyKey = overrides.idempotencyKey ?? createIdempotencyKey();
   const nonce = overrides.nonce ?? bytesToHex(randomBytes(16));
   const serializedBody = serializeBody(body);
   const payload = createSignaturePayload({
@@ -54,7 +53,7 @@ function buildSecurityHeaders(
     nonce,
     serializedBody,
   });
-  const signature = bytesToHex(ed25519.sign(payload, hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)));
+  const signature = bytesToHex(ed25519.sign(payload, DEV_SIGNING_PRIVATE_KEY_BYTES));
   return { idempotencyKey, nonce, signature };
 }
 
