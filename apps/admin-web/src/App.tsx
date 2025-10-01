@@ -8,11 +8,17 @@ import {
   type MonetaryAmount,
   type Voucher,
 } from '@qzd/sdk-browser';
-import { createIdempotencyKey, createSignedFetch } from '@qzd/shared/request-security';
+import {
+  DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX,
+  createIdempotencyKey,
+  createSignedFetch,
+} from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const KNOWN_VALIDATORS = ['validator-1', 'validator-2', 'validator-3'] as const;
-const SIGNING_PRIVATE_KEY = import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined;
+const SIGNING_PRIVATE_KEY =
+  (import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined)?.trim() ??
+  (import.meta.env.DEV ? DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX : undefined);
 const SIGNED_FETCH = createSignedFetch(SIGNING_PRIVATE_KEY);
 
 type AsyncStatus = 'idle' | 'pending';

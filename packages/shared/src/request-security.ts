@@ -1,6 +1,9 @@
 import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 
+export const DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX =
+  '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
+
 type FetchImplementation = typeof fetch;
 
 type RequestInfoInput = RequestInfo | URL;

@@ -13,7 +13,11 @@ import {
   type Transaction,
   type OfflineVoucher,
 } from '@qzd/sdk-browser';
-import { createIdempotencyKey, createSignedFetch } from '@qzd/shared/request-security';
+import {
+  DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX,
+  createIdempotencyKey,
+  createSignedFetch,
+} from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const QUOTE_SCENARIOS = ['DEFAULT', 'TARIFFED', 'SUBSIDIZED'] as const;
@@ -22,7 +26,9 @@ type QuoteScenario = (typeof QUOTE_SCENARIOS)[number];
 
 type AsyncStatus = 'idle' | 'pending';
 
-const SIGNING_PRIVATE_KEY = import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined;
+const SIGNING_PRIVATE_KEY =
+  (import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined)?.trim() ??
+  (import.meta.env.DEV ? DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX : undefined);
 const SIGNED_FETCH = createSignedFetch(SIGNING_PRIVATE_KEY);
 
 function sanitizeBaseUrl(value: string | undefined): string {
