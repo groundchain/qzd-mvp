@@ -246,6 +246,9 @@ importers:
 
   apps/wallet-web:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.6.0
+        version: 1.9.7
       '@qzd/sdk-browser':
         specifier: workspace:*
         version: link:../../packages/sdk-browser
