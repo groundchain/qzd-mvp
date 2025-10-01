@@ -8,7 +8,7 @@ import {
   type MonetaryAmount,
   type Voucher,
 } from '@qzd/sdk-browser';
-import { createIdempotencyKey, createSignedFetch } from './request-security';
+import { createIdempotencyKey, createSignedFetch } from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const KNOWN_VALIDATORS = ['validator-1', 'validator-2', 'validator-3'] as const;

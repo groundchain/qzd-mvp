@@ -7,8 +7,6 @@ settings:
 importers:
 
   .:
-    engines:
-      node: '>=20'
     devDependencies:
       '@algolia/client-search':
         specifier: ^5.39.0
@@ -70,9 +68,6 @@ importers:
 
   apps/admin-web:
     dependencies:
-      '@noble/curves':
-        specifier: ^1.6.0
-        version: 1.9.7
       '@qzd/sdk-browser':
         specifier: workspace:*
         version: link:../../packages/sdk-browser
@@ -201,6 +196,9 @@ importers:
       '@qzd/sdk-browser':
         specifier: workspace:*
         version: link:../../packages/sdk-browser
+      '@qzd/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       jspdf:
         specifier: ^2.5.2
         version: 2.5.2
@@ -249,9 +247,6 @@ importers:
 
   apps/wallet-web:
     dependencies:
-      '@noble/curves':
-        specifier: ^1.6.0
-        version: 1.9.7
       '@qzd/sdk-browser':
         specifier: workspace:*
         version: link:../../packages/sdk-browser
@@ -423,6 +418,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.6.0
+        version: 1.9.7
       zod:
         specifier: ^3.22.4
         version: 3.25.76

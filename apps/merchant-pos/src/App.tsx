@@ -15,7 +15,7 @@ import {
   transactionMatchesInvoice,
   type Invoice,
 } from './lib/invoices';
-import { createIdempotencyKey, createSignedFetch } from './request-security';
+import { createIdempotencyKey, createSignedFetch } from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const POLL_INTERVAL_MS = 5000;

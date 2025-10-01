@@ -13,7 +13,7 @@ import {
   type Transaction,
   type OfflineVoucher,
 } from '@qzd/sdk-browser';
-import { createIdempotencyKey, createSignedFetch } from './request-security';
+import { createIdempotencyKey, createSignedFetch } from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const QUOTE_SCENARIOS = ['DEFAULT', 'TARIFFED', 'SUBSIDIZED'] as const;

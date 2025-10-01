@@ -3,16 +3,20 @@ import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 
 type FetchImplementation = typeof fetch;
 
-const DEFAULT_SIGNING_PRIVATE_KEY_HEX =
-  '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
+type RequestInfoInput = RequestInfo | URL;
+
+type MutableRequestInit = RequestInit & { headers?: HeadersInit };
+
 const HEX_PATTERN = /^([0-9a-fA-F]{2})+$/;
 const SIGNED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const textEncoder = new TextEncoder();
 
 function ensureSigningKeyHex(candidate: string | undefined): string {
-  const normalized = candidate?.trim() ?? DEFAULT_SIGNING_PRIVATE_KEY_HEX;
+  const normalized = candidate?.trim();
   if (!normalized) {
-    throw new Error('A signing private key is required to issue authenticated mutations.');
+    throw new Error(
+      'A signing private key is required to issue authenticated mutations. Provide a hex-encoded Ed25519 private key via configuration.',
+    );
   }
   if (!HEX_PATTERN.test(normalized)) {
     throw new Error('Signing private key must be a hex-encoded string.');
@@ -99,10 +103,26 @@ export function createSignedFetch(
   signingKeyHex?: string,
   baseFetch: FetchImplementation = fetch,
 ): FetchImplementation {
-  const signingKeyBytes = ensureSigningKeyBytes(signingKeyHex);
   const fetchImpl = baseFetch;
 
-  return async (input, init) => {
+  if (!signingKeyHex?.trim()) {
+    return async (input: RequestInfoInput, init?: MutableRequestInit) => {
+      const request = new Request(input as RequestInfo, init);
+      const method = normalizeMethod(request.method);
+
+      if (shouldSign(method)) {
+        throw new Error(
+          'A signing private key is required to issue authenticated mutations. Provide a hex-encoded Ed25519 private key via configuration.',
+        );
+      }
+
+      return fetchImpl(request);
+    };
+  }
+
+  const signingKeyBytes = ensureSigningKeyBytes(signingKeyHex);
+
+  return async (input: RequestInfoInput, init?: MutableRequestInit) => {
     const request = new Request(input as RequestInfo, init);
     const method = normalizeMethod(request.method);
 
