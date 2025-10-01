@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/curves": "^1.6.0",
     "@qzd/sdk-browser": "workspace:*",
     "@qzd/shared": "workspace:*",
     "react": "^18.2.0",
