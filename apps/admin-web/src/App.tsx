@@ -8,21 +8,22 @@ import {
   type MonetaryAmount,
   type Voucher,
 } from '@qzd/sdk-browser';
+import {
+  DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX,
+  createIdempotencyKey,
+  createSignedFetch,
+} from '@qzd/shared/request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const KNOWN_VALIDATORS = ['validator-1', 'validator-2', 'validator-3'] as const;
+const SIGNING_PRIVATE_KEY =
+  (import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined)?.trim() ??
+  (import.meta.env.DEV ? DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX : undefined);
+const SIGNED_FETCH = createSignedFetch(SIGNING_PRIVATE_KEY);
 
 type AsyncStatus = 'idle' | 'pending';
 
 type ValidatorId = (typeof KNOWN_VALIDATORS)[number];
-
-function createIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `idem-${crypto.randomUUID()}`;
-  }
-  const randomSuffix = Math.random().toString(16).slice(2);
-  return `idem-${Date.now()}-${randomSuffix}`;
-}
 
 function sanitizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim();
@@ -75,6 +76,7 @@ export default function App() {
       new Configuration({
         basePath: baseUrl,
         accessToken: token ? async () => token : undefined,
+        fetchApi: SIGNED_FETCH,
       }),
     [baseUrl, token],
   );

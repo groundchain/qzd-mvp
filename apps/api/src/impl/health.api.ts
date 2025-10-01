@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { HealthApi } from '@qzd/sdk-api/server';
@@ -11,8 +11,11 @@ import { AppService } from '../app.service.js';
 
 @Injectable()
 export class HealthApiImpl extends HealthApi {
-  constructor(private readonly appService: AppService) {
+  private readonly appService: AppService;
+
+  constructor(@Optional() appService?: AppService) {
     super();
+    this.appService = appService ?? new AppService();
   }
 
   override getLiveness(

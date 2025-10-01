@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "predev": "node ../../scripts/ensure-sdk-api-generated.mjs",
+    "dev": "pnpm run predev && vite",
     "build": "pnpm --filter @qzd/sdk-browser run build && vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "@qzd/sdk-browser": "workspace:*",
+    "@qzd/shared": "workspace:*",
     "jspdf": "^2.5.2",
     "qrcode": "^1.5.3",
     "react": "^18.2.0",
