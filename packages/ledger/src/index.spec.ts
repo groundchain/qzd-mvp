@@ -63,6 +63,13 @@ function createLedger(threshold = 2) {
   return new AppendOnlyLedger({ issuanceValidators: validators, issuanceThreshold: threshold });
 }
 
+function signWithValidators(canonical: string, count: number) {
+  return validatorPrivKeys.slice(0, count).map((privHex, index) => ({
+    validatorId: validators[index].id,
+    signature: signCanonical(canonical, privHex),
+  }));
+}
+
 describe('AppendOnlyLedger', () => {
   it('issues funds with valid multisig and updates balance', () => {
     const ledger = createLedger();
@@ -199,6 +206,56 @@ describe('AppendOnlyLedger', () => {
     expect(() => ledger.postEntry(entryInput)).toThrowError(/not active/);
   });
 
+  it('maintains append-only history snapshots with sequential identifiers', () => {
+    const ledger = createLedger();
+    const treasury = ledger.openAccount({ alias: 'treasury', kyc_level: 'FULL', public_key: 'treasury' });
+    const bob = ledger.openAccount({ alias: 'bob', kyc_level: 'FULL', public_key: 'bob-key' });
+
+    const issueInput: PostEntryInput = {
+      type: 'ISSUE',
+      amount: 2_000,
+      asset: 'QZD',
+      to_account: treasury.id,
+      sigs: [],
+    };
+    const canonical = canonicalString(issueInput);
+    issueInput.sigs = signWithValidators(canonical, 2);
+    const first = ledger.postEntry(issueInput);
+
+    expect(first.id).toBe(1);
+
+    ledger.postEntry({
+      type: 'TRANSFER',
+      amount: 750,
+      asset: 'QZD',
+      from_account: treasury.id,
+      to_account: bob.id,
+    });
+
+    const snapshot = ledger.getHistory();
+    expect(snapshot.map((entry) => entry.id)).toEqual([1, 2]);
+
+    snapshot.push({
+      id: 999,
+      ts: new Date().toISOString(),
+      type: 'ADJUST',
+      amount: 1,
+      asset: 'QZD',
+      from_account: null,
+      to_account: null,
+      memo: null,
+      tx_hash: 'ignored',
+      sigs: [],
+      meta: {},
+    });
+    snapshot[0] = { ...snapshot[0]!, id: 123, amount: 99 };
+
+    const fresh = ledger.getHistory();
+    expect(fresh).toHaveLength(2);
+    expect(fresh[0]?.amount).toBe(2_000);
+    expect(fresh[1]?.id).toBe(2);
+  });
+
   it('validates multisig helper function', () => {
     const payload: PostEntryInput = {
       type: 'ISSUE',
@@ -287,5 +344,51 @@ describe('AppendOnlyLedger', () => {
       }),
       { numRuns: 25 },
     );
+  });
+});
+
+describe('validateMultisig threshold behaviour', () => {
+  it('enforces multisig thresholds using unique validator signatures', () => {
+    const payload: PostEntryInput = {
+      type: 'ISSUE',
+      amount: 150,
+      asset: 'QZD',
+      to_account: '1',
+    };
+    const canonical = canonicalString(payload);
+    const validSignatures = signWithValidators(canonical, 2);
+
+    expect(
+      validateMultisig({
+        canonical,
+        signatures: [validSignatures[0]!, validSignatures[0]!],
+        validators,
+        threshold: 2,
+      }),
+    ).toBe(false);
+
+    expect(
+      validateMultisig({
+        canonical,
+        signatures: [
+          ...validSignatures,
+          { validatorId: 'unknown', signature: validSignatures[0]!.signature },
+        ],
+        validators,
+        threshold: 2,
+      }),
+    ).toBe(true);
+
+    expect(
+      validateMultisig({
+        canonical,
+        signatures: [
+          ...validSignatures,
+          { validatorId: validators[1]!.id, signature: validSignatures[1]!.signature },
+        ],
+        validators,
+        threshold: 3,
+      }),
+    ).toBe(false);
   });
 });
