@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "predev": "node ../../scripts/ensure-sdk-api-generated.mjs",
+    "dev": "pnpm run predev && vite",
     "build": "pnpm --filter @qzd/sdk-browser run build && vite build",
     "preview": "vite preview",
     "test": "vitest run",
