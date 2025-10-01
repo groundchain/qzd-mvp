@@ -15,9 +15,12 @@ import {
   transactionMatchesInvoice,
   type Invoice,
 } from './lib/invoices';
+import { createIdempotencyKey, createSignedFetch } from './request-security';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:3000';
 const POLL_INTERVAL_MS = 5000;
+const SIGNING_PRIVATE_KEY = import.meta.env.VITE_SIGNING_PRIVATE_KEY as string | undefined;
+const SIGNED_FETCH = createSignedFetch(SIGNING_PRIVATE_KEY);
 
 type AsyncStatus = 'idle' | 'pending';
 
@@ -53,14 +56,6 @@ function formatTimestamp(value: string | Date | undefined): string {
   return asDate.toLocaleString();
 }
 
-function createIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `idem-${crypto.randomUUID()}`;
-  }
-  const randomSuffix = Math.random().toString(16).slice(2);
-  return `idem-${Date.now()}-${randomSuffix}`;
-}
-
 export default function App(): JSX.Element {
   const configuredBaseUrl = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL as string | undefined);
   const [token, setToken] = useState<string | null>(null);
@@ -88,6 +83,7 @@ export default function App(): JSX.Element {
       new Configuration({
         basePath: configuredBaseUrl,
         accessToken: token ? async () => token : undefined,
+        fetchApi: SIGNED_FETCH,
       }),
     [configuredBaseUrl, token],
   );

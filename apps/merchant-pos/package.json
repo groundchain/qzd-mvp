@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@noble/curves": "^1.6.0",
     "@qzd/sdk-browser": "workspace:*",
     "jspdf": "^2.5.2",
     "qrcode": "^1.5.3",
