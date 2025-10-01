@@ -1,30 +1,31 @@
 import { randomUUID } from 'node:crypto';
 
 import type { AxiosError } from 'axios';
-import {
-  AccountsApi,
-  AuthApi,
-  Configuration,
-  HealthApi,
-  ModelError,
-  QuoteScenario,
-  RemittancesApi,
-} from '@qzd/sdk-node';
+import type { ModelError } from '@qzd/sdk-node';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { ensureContractMockServer } from '../../../tests/contract-mock-server';
+const contractBaseUrl = process.env.CONTRACT_BASE_URL;
+const shouldRunContractSuite = Boolean(contractBaseUrl);
 
-describe('Node SDK contract', () => {
+type NodeSdk = typeof import('@qzd/sdk-node');
+
+describe.skipIf(!shouldRunContractSuite)('Node SDK contract', () => {
   let baseUrl: string;
-  let unauthenticatedConfig: Configuration;
+  let sdk: NodeSdk;
+  let unauthenticatedConfig: InstanceType<NodeSdk['Configuration']>;
 
   beforeAll(async () => {
-    baseUrl = await ensureContractMockServer();
-    unauthenticatedConfig = new Configuration({ basePath: baseUrl });
+    if (!contractBaseUrl) {
+      throw new Error('CONTRACT_BASE_URL must be provided when running contract tests.');
+    }
+
+    baseUrl = contractBaseUrl;
+    sdk = await import('@qzd/sdk-node');
+    unauthenticatedConfig = new sdk.Configuration({ basePath: baseUrl });
   });
 
   const login = async (): Promise<string> => {
-    const authApi = new AuthApi(unauthenticatedConfig);
+    const authApi = new sdk.AuthApi(unauthenticatedConfig);
     const { data } = await authApi.loginUser({
       idempotencyKey: randomUUID(),
       loginUserRequest: {
@@ -38,7 +39,7 @@ describe('Node SDK contract', () => {
   };
 
   it('reports live status from GET /health/live', async () => {
-    const api = new HealthApi(unauthenticatedConfig);
+    const api = new sdk.HealthApi(unauthenticatedConfig);
     const { data } = await api.getLiveness();
 
     expect(data.status).toBe('live');
@@ -46,15 +47,15 @@ describe('Node SDK contract', () => {
 
   it('simulates a DEFAULT quote for $100 USD', async () => {
     const token = await login();
-    const authenticatedConfig = new Configuration({
+    const authenticatedConfig = new sdk.Configuration({
       basePath: baseUrl,
       accessToken: token,
     });
 
-    const api = new RemittancesApi(authenticatedConfig);
+    const api = new sdk.RemittancesApi(authenticatedConfig);
     const { data } = await api.simulateQuote({
       usdAmount: '100.00',
-      scenario: QuoteScenario.Default,
+      scenario: sdk.QuoteScenario.Default,
     });
 
     expect(data.quoteId).toBe('quote_default_000001');
@@ -65,7 +66,7 @@ describe('Node SDK contract', () => {
   });
 
   it('rejects unauthenticated balance reads', async () => {
-    const api = new AccountsApi(unauthenticatedConfig);
+    const api = new sdk.AccountsApi(unauthenticatedConfig);
 
     await expect(api.getAccountBalance({ id: 'acc_987654321' })).rejects.toMatchObject<
       AxiosError<ModelError>
