@@ -7,7 +7,10 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
 import { InMemoryBankService, getFallbackBankService } from './in-memory-bank.service.js';
-import { createSignaturePayload, serializeBody } from './request-security.js';
+import {
+  createSignaturePayloadFromComponents as createSignaturePayload,
+  serializeBody,
+} from '@qzd/shared/request-security';
 
 const DEV_SIGNING_PRIVATE_KEY_HEX =
   '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';

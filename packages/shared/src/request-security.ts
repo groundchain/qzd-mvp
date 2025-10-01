@@ -200,6 +200,36 @@ export interface RequestLike {
   ips?: string[];
 }
 
+function getResponseFromRequest(request: RequestLike): HeaderWritableResponse | undefined {
+  const requestLike = request as Partial<RequestLike> & { res?: unknown };
+  const response = requestLike.res;
+  if (!response || typeof response !== 'object') {
+    return undefined;
+  }
+
+  const candidate = response as Partial<HeaderWritableResponse>;
+  return typeof candidate.set === 'function' ? (candidate as HeaderWritableResponse) : undefined;
+}
+
+export function applyRateLimitHeaders(request: RequestLike, state?: RateLimitState): void {
+  if (!state) {
+    return;
+  }
+
+  const response = getResponseFromRequest(request);
+  if (!response) {
+    return;
+  }
+
+  response.set('X-RateLimit-Limit', state.limit.toString());
+  response.set('X-RateLimit-Remaining', Math.max(0, state.remaining).toString());
+  response.set('X-RateLimit-Reset', Math.ceil(state.resetAt / 1000).toString());
+
+  if (state.limited && typeof state.retryAfterSeconds === 'number') {
+    response.set('Retry-After', Math.max(1, state.retryAfterSeconds).toString());
+  }
+}
+
 export interface RateLimitOptions<TRequest extends RequestLike> {
   limit: number;
   windowMs: number;

@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -36,7 +38,14 @@ import type {
   UploadAccountKycRequest,
 } from '@qzd/sdk-api/server';
 import { createOfflineVoucherPayload } from '@qzd/card-mock';
-import { RequestSecurityManager, type ValidatedMutationContext } from './request-security.js';
+import {
+  RequestSecurityError,
+  RequestSecurityManager,
+  applyRateLimitHeaders,
+  DEFAULT_RATE_LIMIT_MAX,
+  DEFAULT_RATE_LIMIT_WINDOW_MS,
+  type ValidatedMutationContext,
+} from '@qzd/shared/request-security';
 import { recordTransactionMetric } from './observability/metrics.js';
 
 type AccountStatus = Account['status'];
@@ -186,8 +195,6 @@ const NEW_ACCOUNT_THRESHOLD = 5;
 const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
 const HEX_PATTERN = /^([0-9a-fA-F]{2})+$/;
 
-const DEFAULT_RATE_LIMIT_MAX = 120;
-const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 function resolveRateLimitOptions(): { limit: number; windowMs: number } | undefined {
   const limit = parsePositiveInteger(process.env.QZD_RATE_LIMIT_MAX);
@@ -249,9 +256,62 @@ export class InMemoryBankService {
   private alertSequence = 1;
   private crashNextTransaction = false;
 
+  private validateMutation(request: Request, body: unknown): ValidatedMutationContext {
+    try {
+      const { context, rateLimitState } = this.security.validateMutation(request, body);
+      applyRateLimitHeaders(request, rateLimitState);
+      return context;
+    } catch (error) {
+      return this.rethrowSecurityError(request, error);
+    }
+  }
+
+  private applyIdempotency<T>(context: ValidatedMutationContext, factory: () => T): T {
+    try {
+      return this.security.applyIdempotency(context, factory);
+    } catch (error) {
+      return this.rethrowSecurityError(undefined, error);
+    }
+  }
+
+  private rethrowSecurityError(request: Request | undefined, error: unknown): never {
+    if (!(error instanceof RequestSecurityError)) {
+      throw error;
+    }
+
+    if (request) {
+      applyRateLimitHeaders(request, error.rateLimitState);
+    }
+
+    switch (error.status) {
+      case 400:
+        throw new BadRequestException(error.message);
+      case 401:
+        throw new UnauthorizedException({
+          code: error.code,
+          message: error.message,
+        });
+      case 409:
+        throw new ConflictException({
+          code: error.code,
+          message: error.message,
+        });
+      case 429:
+        throw new HttpException(
+          {
+            code: error.code,
+            message: error.message,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      default:
+        throw error;
+    }
+  }
+
   registerUser(request: RegisterUserRequest, actor: Request): RegisterUser201Response {
-    const context = this.security.validateMutation(actor, request);
-    return this.security.applyIdempotency(context, () => {
+    const context = this.validateMutation(actor, request);
+    return this.applyIdempotency(context, () => {
       const email = request.email?.trim().toLowerCase();
       const password = request.password?.trim();
       const fullName = request.fullName?.trim();
@@ -307,8 +367,8 @@ export class InMemoryBankService {
   }
 
   loginUser(request: LoginUserRequest, actor: Request): LoginUser200Response {
-    const context = this.security.validateMutation(actor, request);
-    return this.security.applyIdempotency(context, () => {
+    const context = this.validateMutation(actor, request);
+    return this.applyIdempotency(context, () => {
       const email = request.email?.trim().toLowerCase();
       const password = request.password?.trim();
 
@@ -330,9 +390,9 @@ export class InMemoryBankService {
   }
 
   createAccount(request: CreateAccountRequest, actor: Request): Account {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const ownerName = request.displayName?.trim() || user.fullName;
       const status: AccountStatus = 'ACTIVE';
       const kycLevel: KycLevel = 'BASIC';
@@ -363,9 +423,9 @@ export class InMemoryBankService {
   }
 
   updateAccountKyc(request: UploadAccountKycRequest, actor: Request): Account {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const accountId = request.accountId?.trim();
       const kycLevel = request.kycLevel;
 
@@ -425,7 +485,7 @@ export class InMemoryBankService {
   }
 
   agentCashIn(request: AgentCashInRequest, actor: Request): Transaction {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
     const accountId = request.accountId?.trim();
     const amountValue = request.amount?.value?.trim();
@@ -489,9 +549,9 @@ export class InMemoryBankService {
   }
 
   agentCashOut(request: AgentCashOutRequest, actor: Request): Voucher {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const accountId = request.accountId?.trim();
       const amountValue = request.amount?.value?.trim();
 
@@ -570,9 +630,9 @@ export class InMemoryBankService {
   }
 
   redeemVoucher(code: string, actor: Request): Voucher {
-    const context = this.security.validateMutation(actor, undefined);
+    const context = this.validateMutation(actor, undefined);
     this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const normalizedCode = code?.trim();
       if (!normalizedCode) {
         throw new BadRequestException('code is required');
@@ -633,9 +693,9 @@ export class InMemoryBankService {
   }
 
   createOfflineVoucher(request: OfflineVoucher, actor: Request): OfflineVoucher {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const id = request.id?.trim();
       const fromCardId = request.fromCardId?.trim();
       const toAccountId = request.toAccountId?.trim();
@@ -746,9 +806,9 @@ export class InMemoryBankService {
   }
 
   redeemOfflineVoucher(id: string, actor: Request): OfflineVoucher {
-    const context = this.security.validateMutation(actor, undefined);
+    const context = this.validateMutation(actor, undefined);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const normalizedId = id?.trim();
       if (!normalizedId) {
         throw new BadRequestException('id is required');
@@ -879,9 +939,9 @@ export class InMemoryBankService {
 
   acknowledgeAlert(id: string, actor: Request): void {
     const requestLike = actor as Partial<Request> & { body?: unknown };
-    const context = this.security.validateMutation(actor, requestLike.body);
+    const context = this.validateMutation(actor, requestLike.body);
     this.requireUser(actor);
-    this.security.applyIdempotency(context, () => {
+    this.applyIdempotency(context, () => {
       const normalizedId = id?.trim();
       if (!normalizedId) {
         throw new BadRequestException('id is required');
@@ -896,8 +956,8 @@ export class InMemoryBankService {
   }
 
   receiveSmsInbound(request: SmsInboundRequest, actor: Request): SmsInboundResponse {
-    const context = this.security.validateMutation(actor, request);
-    return this.security.applyIdempotency(context, () => {
+    const context = this.validateMutation(actor, request);
+    return this.applyIdempotency(context, () => {
       const msisdn = this.normalizeMsisdn(request.from);
       const text = request.text?.trim();
 
@@ -916,7 +976,7 @@ export class InMemoryBankService {
   }
 
   initiateTransfer(request: TransferRequest, actor: Request): Transaction {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
     const sourceId = request.sourceAccountId?.trim();
     const destinationId = request.destinationAccountId?.trim();
@@ -1006,9 +1066,9 @@ export class InMemoryBankService {
   }
 
   createIssuanceRequest(request: IssueRequest, actor: Request): IssuanceRequest {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const accountId = request.accountId?.trim();
       const amountValue = request.amount?.value?.trim();
 
@@ -1056,9 +1116,9 @@ export class InMemoryBankService {
   }
 
   signIssuanceRequest(id: string, request: SignIssuanceRequestRequest, actor: Request): IssuanceRequest {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     this.requireUser(actor);
-    return this.security.applyIdempotency(context, () => {
+    return this.applyIdempotency(context, () => {
       const normalizedId = id?.trim();
       const normalizedValidator = request.validatorId?.trim();
       if (!normalizedId || !normalizedValidator) {
@@ -1081,7 +1141,7 @@ export class InMemoryBankService {
   }
 
   issueFromRequest(request: IssueTokensRequest, actor: Request): Transaction {
-    const context = this.security.validateMutation(actor, request);
+    const context = this.validateMutation(actor, request);
     const user = this.requireUser(actor);
     const normalizedId = request.requestId?.trim();
     if (!normalizedId) {
@@ -1566,7 +1626,7 @@ export class InMemoryBankService {
     const journal = this.getOrCreateTransactionJournal(context, job);
     journal.job = job;
 
-    return this.security.applyIdempotency(context, () => this.executeTransactionJournal(journal));
+    return this.applyIdempotency(context, () => this.executeTransactionJournal(journal));
   }
 
   private getOrCreateTransactionJournal(
