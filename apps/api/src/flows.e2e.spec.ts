@@ -69,6 +69,25 @@ function getResponseBody<T extends Record<string, unknown>>(response: ResponseWi
   return response.body as T;
 }
 
+type ErrorPayload = {
+  code?: string;
+  message?: { code?: string; message?: string } | string;
+};
+
+function extractErrorDetails(payload: ErrorPayload): { code?: string; message?: string } {
+  if (typeof payload.message === 'object' && payload.message) {
+    return {
+      code: payload.message.code ?? payload.code,
+      message: payload.message.message,
+    };
+  }
+
+  return {
+    code: payload.code,
+    message: typeof payload.message === 'string' ? payload.message : undefined,
+  };
+}
+
 function applySecurity(
   request: ChainableTest,
   method: string,
@@ -436,11 +455,112 @@ describe('Wallet flows', () => {
       .send(cashInBody)
       .expect(409);
 
-    const replayPayload = getResponseBody<{
-      code?: string;
-      message?: { code?: string };
-    }>(replayResponse);
-    expect(replayPayload.message?.code ?? replayPayload.code).toBe('REPLAY_DETECTED');
+    const replayPayload = getResponseBody<ErrorPayload>(replayResponse);
+    const { code: replayCode, message: replayMessage } = extractErrorDetails(replayPayload);
+    expect(replayCode).toBe('REPLAY_DETECTED');
+    expect(replayMessage).toBe('Nonce has already been used.');
+  });
+
+  it('returns the documented response when a registration is retried with the same payload', async () => {
+    const email = `idem-register${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Idempotent Register';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const { request: firstRequest, headers } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+    );
+    const firstResponse = await firstRequest.send(registerBody).expect(201);
+    const firstPayload = getResponseBody<{
+      token?: string;
+      account?: { id?: string };
+    }>(firstResponse);
+
+    const { request: retryRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+      { idempotencyKey: headers.idempotencyKey },
+    );
+    const retryResponse = await retryRequest.send(registerBody).expect(201);
+    const retryPayload = getResponseBody<{
+      token?: string;
+      account?: { id?: string };
+    }>(retryResponse);
+
+    expect(retryPayload).toStrictEqual(firstPayload);
+  });
+
+  it('returns a conflict when the same idempotency key is reused with a different payload', async () => {
+    const email = `conflict${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Conflict User';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const { request: registerRequest, headers } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+    );
+    await registerRequest.send(registerBody).expect(201);
+
+    const conflictingBody = { ...registerBody, fullName: 'Changed Name' };
+    const { request: conflictRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      conflictingBody,
+      { idempotencyKey: headers.idempotencyKey },
+    );
+    const conflictResponse = await conflictRequest.send(conflictingBody).expect(409);
+    const conflictPayload = getResponseBody<ErrorPayload>(conflictResponse);
+    const { code: conflictCode, message: conflictMessage } = extractErrorDetails(conflictPayload);
+
+    expect(conflictCode).toBe('CONFLICT');
+    expect(conflictMessage).toBe('Idempotency key has already been used with a different payload.');
+  });
+
+  it('rejects registration replays that reuse the same nonce', async () => {
+    const email = `nonce${Date.now()}@example.com`;
+    const password = 'Pass1234!';
+    const fullName = 'Nonce Replay';
+    const client = (): TestClient => supertest(server) as unknown as TestClient;
+
+    const registerBody = { email, password, fullName };
+    const overrides: SecurityOverrides = {
+      idempotencyKey: `idem-${randomUUID()}`,
+      nonce: bytesToHex(randomBytes(16)),
+    };
+
+    const { request: firstRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+      overrides,
+    );
+    await firstRequest.send(registerBody).expect(201);
+
+    const { request: replayRequest } = applySecurity(
+      client().post('/auth/register'),
+      'POST',
+      '/auth/register',
+      registerBody,
+      overrides,
+    );
+    const replayResponse = await replayRequest.send(registerBody).expect(409);
+    const replayPayload = getResponseBody<ErrorPayload>(replayResponse);
+    const { code: replayCode, message: replayMessage } = extractErrorDetails(replayPayload);
+
+    expect(replayCode).toBe('REPLAY_DETECTED');
+    expect(replayMessage).toBe('Nonce has already been used.');
   });
 
   it('returns the same result for idempotent retries', async () => {
