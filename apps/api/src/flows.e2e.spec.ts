@@ -1,110 +1,21 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomBytes, randomUUID } from 'node:crypto';
-import supertest from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ed25519 } from '@noble/curves/ed25519';
-import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
+import { bytesToHex } from '@noble/curves/abstract/utils';
 import { AppModule } from './app.module.js';
 import { InMemoryBankService, getFallbackBankService } from './in-memory-bank.service.js';
-import {
-  createSignaturePayloadFromComponents as createSignaturePayload,
-  serializeBody,
-} from '@qzd/shared/request-security';
 import { createMockCardKeys, createOfflineVoucher } from '@qzd/card-mock';
-
-const DEV_SIGNING_PRIVATE_KEY_HEX =
-  '0a3c8c97f7925ea37e46f69af43e219b1d09de89ec1a76cf2ce9a9289a392d5a';
-const DEV_SIGNING_PUBLIC_KEY_HEX = bytesToHex(
-  ed25519.getPublicKey(hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)),
-);
-
-type SecurityOverrides = {
-  idempotencyKey?: string;
-  nonce?: string;
-};
-
-interface SecurityHeaders {
-  idempotencyKey: string;
-  nonce: string;
-  signature: string;
-}
-
-function buildSecurityHeaders(
-  method: string,
-  path: string,
-  body: unknown,
-  overrides: SecurityOverrides = {},
-): SecurityHeaders {
-  const idempotencyKey = overrides.idempotencyKey ?? `idem-${randomUUID()}`;
-  const nonce = overrides.nonce ?? bytesToHex(randomBytes(16));
-  const serializedBody = serializeBody(body);
-  const payload = createSignaturePayload({
-    method,
-    path,
-    idempotencyKey,
-    nonce,
-    serializedBody,
-  });
-  const signature = bytesToHex(
-    ed25519.sign(payload, hexToBytes(DEV_SIGNING_PRIVATE_KEY_HEX)),
-  );
-  return { idempotencyKey, nonce, signature };
-}
-
-type HeaderValue = string | number | readonly string[];
-
-type ResponseWithBody = { status: number; body: Record<string, unknown> };
-
-type ChainableTest = supertest.Test &
-  PromiseLike<ResponseWithBody> & {
-    set(field: string, value: HeaderValue): ChainableTest;
-    set(fields: Record<string, HeaderValue>): ChainableTest;
-    send(body?: unknown): ChainableTest;
-  };
-
-type TestClient = {
-  post(path: string): ChainableTest;
-  get(path: string): ChainableTest;
-};
-
-function getResponseBody<T extends Record<string, unknown>>(response: ResponseWithBody): T {
-  return response.body as T;
-}
-
-type ErrorPayload = {
-  code?: string;
-  message?: { code?: string; message?: string } | string;
-};
-
-function extractErrorDetails(payload: ErrorPayload): { code?: string; message?: string } {
-  if (typeof payload.message === 'object' && payload.message) {
-    return {
-      code: payload.message.code ?? payload.code,
-      message: payload.message.message,
-    };
-  }
-
-  return {
-    code: payload.code,
-    message: typeof payload.message === 'string' ? payload.message : undefined,
-  };
-}
-
-function applySecurity(
-  request: ChainableTest,
-  method: string,
-  path: string,
-  body: unknown,
-  overrides: SecurityOverrides = {},
-): { request: ChainableTest; headers: SecurityHeaders } {
-  const headers = buildSecurityHeaders(method, path, body, overrides);
-  request
-    .set('Idempotency-Key', headers.idempotencyKey)
-    .set('X-QZD-Nonce', headers.nonce)
-    .set('X-QZD-Signature', headers.signature);
-  return { request, headers };
-}
+import {
+  DEV_SIGNING_PUBLIC_KEY_HEX,
+  applySecurity,
+  createTestClient,
+  extractErrorDetails,
+  getResponseBody,
+  type ErrorPayload,
+  type SecurityOverrides,
+  type TestClient,
+} from './test-helpers/request-security.js';
 
 describe('Wallet flows', () => {
   let app: INestApplication;
@@ -133,7 +44,7 @@ describe('Wallet flows', () => {
     const email = `user${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Test User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -206,7 +117,7 @@ describe('Wallet flows', () => {
     const email = `agent${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Agent User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -290,7 +201,9 @@ describe('Wallet flows', () => {
       .expect(200);
 
     const postCashOutPayload = getResponseBody<{ total?: { value?: string } }>(postCashOutBalance);
-    const balanceAfterCashOut = Number.parseFloat((postCashOutPayload.total?.value as string) ?? '0');
+    const balanceAfterCashOut = Number.parseFloat(
+      (postCashOutPayload.total?.value as string) ?? '0',
+    );
     expect(balanceAfterCashOut).toBeCloseTo(balanceAfterCashIn - 100.5, 2);
 
     const redeemPath = `/agents/vouchers/${voucherCode}/redeem`;
@@ -300,9 +213,7 @@ describe('Wallet flows', () => {
       redeemPath,
       null,
     );
-    const redeemResponse = await redeemRequest
-      .set('Authorization', `Bearer ${token}`)
-      .expect(201);
+    const redeemResponse = await redeemRequest.set('Authorization', `Bearer ${token}`).expect(201);
 
     const redeemPayload = getResponseBody<{ status?: string; code?: string }>(redeemResponse);
     expect(redeemPayload.status).toBe('redeemed');
@@ -314,7 +225,9 @@ describe('Wallet flows', () => {
       .expect(200);
 
     const transactionsPayload = getResponseBody<{ items?: unknown[] }>(transactionsResponse);
-    const items = (transactionsPayload.items as Array<{ type: string; metadata?: Record<string, string> }>) ?? [];
+    const items =
+      (transactionsPayload.items as Array<{ type: string; metadata?: Record<string, string> }>) ??
+      [];
     expect(items[0]?.type).toBe('redemption');
     expect(items[0]?.metadata?.voucherCode).toBe(voucherCode);
     expect(items[1]?.metadata?.feeValue).toBe('0.50');
@@ -324,7 +237,7 @@ describe('Wallet flows', () => {
     const email = `offline${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Offline User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -367,7 +280,9 @@ describe('Wallet flows', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(signedVoucher)
       .expect(201);
-    const createVoucherPayload = getResponseBody<{ id?: string; status?: string }>(createVoucherResponse);
+    const createVoucherPayload = getResponseBody<{ id?: string; status?: string }>(
+      createVoucherResponse,
+    );
     expect(createVoucherPayload.id).toBe(voucherDraft.id);
     expect(createVoucherPayload.status).toBe('pending');
 
@@ -377,10 +292,7 @@ describe('Wallet flows', () => {
       '/offline/vouchers',
       signedVoucher,
     );
-    await duplicateRequest
-      .set('Authorization', `Bearer ${token}`)
-      .send(signedVoucher)
-      .expect(409);
+    await duplicateRequest.set('Authorization', `Bearer ${token}`).send(signedVoucher).expect(409);
 
     const redeemPath = `/offline/vouchers/${voucherDraft.id}/redeem`;
     const { request: redeemRequest } = applySecurity(
@@ -389,9 +301,7 @@ describe('Wallet flows', () => {
       redeemPath,
       null,
     );
-    const redeemResponse = await redeemRequest
-      .set('Authorization', `Bearer ${token}`)
-      .expect(201);
+    const redeemResponse = await redeemRequest.set('Authorization', `Bearer ${token}`).expect(201);
     const redeemPayload = getResponseBody<{ status?: string; id?: string }>(redeemResponse);
     expect(redeemPayload.status).toBe('redeemed');
     expect(redeemPayload.id).toBe(voucherDraft.id);
@@ -409,7 +319,7 @@ describe('Wallet flows', () => {
     const email = `replay${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Replay User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -468,7 +378,7 @@ describe('Wallet flows', () => {
     const email = `idem-register${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Idempotent Register';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: firstRequest, headers } = applySecurity(
@@ -503,7 +413,7 @@ describe('Wallet flows', () => {
     const email = `conflict${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Conflict User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest, headers } = applySecurity(
@@ -534,7 +444,7 @@ describe('Wallet flows', () => {
     const email = `nonce${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Nonce Replay';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const overrides: SecurityOverrides = {
@@ -570,7 +480,7 @@ describe('Wallet flows', () => {
     const email = `idem${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Idem User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -592,7 +502,9 @@ describe('Wallet flows', () => {
       .get(`/accounts/${accountId}/balance`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const startingBalancePayload = getResponseBody<{ total?: { value?: string } }>(startingBalanceResponse);
+    const startingBalancePayload = getResponseBody<{ total?: { value?: string } }>(
+      startingBalanceResponse,
+    );
     const startingTotal = Number.parseFloat((startingBalancePayload.total?.value as string) ?? '0');
 
     const cashInBody = {
@@ -634,7 +546,9 @@ describe('Wallet flows', () => {
       .get(`/accounts/${accountId}/balance`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const finalBalancePayload = getResponseBody<{ total?: { value?: string } }>(finalBalanceResponse);
+    const finalBalancePayload = getResponseBody<{ total?: { value?: string } }>(
+      finalBalanceResponse,
+    );
     const finalTotal = Number.parseFloat((finalBalancePayload.total?.value as string) ?? '0');
 
     expect(finalTotal - startingTotal).toBeCloseTo(75, 2);
@@ -644,7 +558,7 @@ describe('Wallet flows', () => {
     const email = `crash${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Crash Test User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -688,10 +602,7 @@ describe('Wallet flows', () => {
       cashInBody,
       { idempotencyKey },
     );
-    await firstRequest
-      .set('Authorization', `Bearer ${token}`)
-      .send(cashInBody)
-      .expect(500);
+    await firstRequest.set('Authorization', `Bearer ${token}`).send(cashInBody).expect(500);
 
     const dlqAfterCrash = bank.getDeadLetterQueueSnapshot();
     expect(dlqAfterCrash).toHaveLength(1);
@@ -718,7 +629,9 @@ describe('Wallet flows', () => {
       .get(`/accounts/${accountId}/balance`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const finalBalancePayload = getResponseBody<{ total?: { value?: string } }>(finalBalanceResponse);
+    const finalBalancePayload = getResponseBody<{ total?: { value?: string } }>(
+      finalBalanceResponse,
+    );
     const finalTotal = Number.parseFloat((finalBalancePayload.total?.value as string) ?? '0');
 
     expect(finalTotal - startingTotal).toBeCloseTo(25, 2);
@@ -728,7 +641,7 @@ describe('Wallet flows', () => {
     const email = `worker${Date.now()}@example.com`;
     const password = 'Pass1234!';
     const fullName = 'Retry Worker User';
-    const client = (): TestClient => supertest(server) as unknown as TestClient;
+    const client = (): TestClient => createTestClient(server);
 
     const registerBody = { email, password, fullName };
     const { request: registerRequest } = applySecurity(
@@ -762,10 +675,7 @@ describe('Wallet flows', () => {
       cashInBody,
       { idempotencyKey },
     );
-    await firstRequest
-      .set('Authorization', `Bearer ${token}`)
-      .send(cashInBody)
-      .expect(500);
+    await firstRequest.set('Authorization', `Bearer ${token}`).send(cashInBody).expect(500);
 
     expect(bank.getDeadLetterQueueSnapshot()).toHaveLength(1);
 
