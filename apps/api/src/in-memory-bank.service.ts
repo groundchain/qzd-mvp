@@ -186,6 +186,36 @@ const NEW_ACCOUNT_THRESHOLD = 5;
 const NEW_ACCOUNT_WINDOW_MS = 5 * 60 * 1000;
 const HEX_PATTERN = /^([0-9a-fA-F]{2})+$/;
 
+const DEFAULT_RATE_LIMIT_MAX = 120;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
+
+function resolveRateLimitOptions(): { limit: number; windowMs: number } | undefined {
+  const limit = parsePositiveInteger(process.env.QZD_RATE_LIMIT_MAX);
+  const windowMs = parsePositiveInteger(process.env.QZD_RATE_LIMIT_WINDOW_MS);
+
+  const resolvedLimit = limit ?? DEFAULT_RATE_LIMIT_MAX;
+  const resolvedWindowMs = windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
+
+  if (resolvedLimit <= 0 || resolvedWindowMs <= 0) {
+    return undefined;
+  }
+
+  return { limit: resolvedLimit, windowMs: resolvedWindowMs };
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    return undefined;
+  }
+
+  return Math.floor(parsed);
+}
+
 @Injectable()
 export class InMemoryBankService {
   private readonly usersByEmail = new Map<string, UserRecord>();
@@ -200,7 +230,9 @@ export class InMemoryBankService {
   private readonly offlineVoucherNonces = new Map<string, string>();
   private readonly offlineCardPublicKeys = new Map<string, Uint8Array>();
   private readonly smsAccounts = new Map<string, string>();
-  private readonly security = new RequestSecurityManager();
+  private readonly security = new RequestSecurityManager({
+    rateLimit: resolveRateLimitOptions(),
+  });
   private readonly alerts = new Map<string, AlertRecord>();
   private readonly alertOrder: string[] = [];
   private readonly activeAlertKeys = new Set<string>();
@@ -1808,8 +1840,15 @@ export class InMemoryBankService {
   }
 }
 
-const fallbackBankService = new InMemoryBankService();
+let fallbackBankService: InMemoryBankService | undefined;
 
 export function getFallbackBankService(): InMemoryBankService {
+  if (!fallbackBankService) {
+    fallbackBankService = new InMemoryBankService();
+  }
   return fallbackBankService;
+}
+
+export function resetFallbackBankService(): void {
+  fallbackBankService = new InMemoryBankService();
 }

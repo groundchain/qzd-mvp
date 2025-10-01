@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -24,8 +26,15 @@ function decodeHex(value: string, errorFactory: () => Error): Uint8Array {
   return hexToBytes(value);
 }
 
+interface RateLimitOptions {
+  limit: number;
+  windowMs: number;
+  keyGenerator?: (request: Request) => string | undefined;
+}
+
 interface RequestSecurityOptions {
   publicKeyHex?: string;
+  rateLimit?: RateLimitOptions;
 }
 
 export interface SignatureComponents {
@@ -68,6 +77,7 @@ export class RequestSecurityManager {
   private readonly usedNonces = new Set<string>();
   private readonly idempotencyRecords = new Map<string, IdempotencyRecord>();
   private readonly publicKeyBytes: Uint8Array;
+  private readonly rateLimiter?: RequestRateLimiter;
 
   constructor(options: RequestSecurityOptions = {}) {
     const publicKeyHex =
@@ -82,6 +92,11 @@ export class RequestSecurityManager {
           'QZD_REQUEST_SIGNING_PUBLIC_KEY must be a hex-encoded string representing an Ed25519 public key.',
         ),
     );
+
+    const rateLimit = this.normalizeRateLimitOptions(options.rateLimit);
+    if (rateLimit) {
+      this.rateLimiter = new RequestRateLimiter(rateLimit);
+    }
   }
 
   validateMutation(request: Request, body: unknown): ValidatedMutationContext {
@@ -101,6 +116,18 @@ export class RequestSecurityManager {
         code: 'INVALID_SIGNATURE',
         message: 'Request signature is invalid.',
       });
+    }
+
+    const rateLimitState = this.rateLimiter?.consume(request);
+    this.applyRateLimitHeaders(request, rateLimitState);
+    if (rateLimitState?.limited) {
+      throw new HttpException(
+        {
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Rate limit exceeded.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     if (this.usedNonces.has(nonce)) {
@@ -170,6 +197,19 @@ export class RequestSecurityManager {
     return {};
   }
 
+  private getResponse(request: Request): HeaderWritableResponse | undefined {
+    const requestLike = request as Partial<Request> & { res?: unknown };
+    const response = requestLike.res;
+    if (!response || typeof response !== 'object') {
+      return undefined;
+    }
+
+    const candidate = response as Partial<HeaderWritableResponse>;
+    return typeof candidate.set === 'function'
+      ? (candidate as HeaderWritableResponse)
+      : undefined;
+  }
+
   private decodeHex(value: string, message: string): Uint8Array {
     return decodeHex(value, () => new BadRequestException(message));
   }
@@ -184,4 +224,146 @@ export class RequestSecurityManager {
     }
     return JSON.parse(JSON.stringify(value)) as T;
   }
+
+  private normalizeRateLimitOptions(options?: RateLimitOptions): NormalizedRateLimitOptions | undefined {
+    if (!options) {
+      return undefined;
+    }
+
+    const limit = Number.isFinite(options.limit) ? Math.floor(options.limit) : Number.NaN;
+    const windowMs = Number.isFinite(options.windowMs) ? Math.floor(options.windowMs) : Number.NaN;
+    if (!Number.isFinite(limit) || !Number.isFinite(windowMs) || limit <= 0 || windowMs <= 0) {
+      return undefined;
+    }
+
+    return {
+      limit,
+      windowMs,
+      keyGenerator: options.keyGenerator,
+    } satisfies NormalizedRateLimitOptions;
+  }
+
+  private applyRateLimitHeaders(request: Request, state?: RateLimitState): void {
+    if (!state) {
+      return;
+    }
+
+    const response = this.getResponse(request);
+    if (!response) {
+      return;
+    }
+
+    response.set('X-RateLimit-Limit', state.limit.toString());
+    response.set('X-RateLimit-Remaining', Math.max(0, state.remaining).toString());
+    response.set('X-RateLimit-Reset', Math.ceil(state.resetAt / 1000).toString());
+    if (state.limited && typeof state.retryAfterSeconds === 'number') {
+      response.set('Retry-After', Math.max(1, state.retryAfterSeconds).toString());
+    }
+  }
+}
+
+interface NormalizedRateLimitOptions {
+  limit: number;
+  windowMs: number;
+  keyGenerator?: (request: Request) => string | undefined;
+}
+
+interface RateLimitState {
+  limit: number;
+  remaining: number;
+  resetAt: number;
+  limited: boolean;
+  retryAfterSeconds?: number;
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+class RequestRateLimiter {
+  private readonly buckets = new Map<string, RateLimitBucket>();
+
+  constructor(private readonly options: NormalizedRateLimitOptions) {}
+
+  consume(request: Request): RateLimitState {
+    const key = this.options.keyGenerator?.(request) ?? this.extractKey(request);
+    const now = Date.now();
+    const limit = this.options.limit;
+    const windowMs = this.options.windowMs;
+
+    if (!key) {
+      return {
+        limit,
+        remaining: limit,
+        resetAt: now + windowMs,
+        limited: false,
+      } satisfies RateLimitState;
+    }
+
+    const existing = this.buckets.get(key);
+    const bucket: RateLimitBucket = existing && existing.resetAt > now
+      ? existing
+      : { count: 0, resetAt: now + windowMs };
+
+    if (bucket.count >= limit) {
+      const retryAfterMs = bucket.resetAt - now;
+      const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+      this.buckets.set(key, bucket);
+      return {
+        limit,
+        remaining: 0,
+        resetAt: bucket.resetAt,
+        limited: true,
+        retryAfterSeconds,
+      } satisfies RateLimitState;
+    }
+
+    bucket.count += 1;
+    this.buckets.set(key, bucket);
+    const remaining = Math.max(0, limit - bucket.count);
+
+    return {
+      limit,
+      remaining,
+      resetAt: bucket.resetAt,
+      limited: false,
+    } satisfies RateLimitState;
+  }
+
+  private extractKey(request: Request): string | undefined {
+    const requestLike = request as Partial<Request> & {
+      ip?: string;
+      ips?: string[];
+    };
+
+    if (Array.isArray(requestLike.ips) && requestLike.ips.length > 0) {
+      return requestLike.ips[0] ?? undefined;
+    }
+
+    if (typeof requestLike.ip === 'string' && requestLike.ip) {
+      return requestLike.ip;
+    }
+
+    const headers = this.getHeaders(request);
+    const forwarded = headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return forwarded.split(',')[0]?.trim() || undefined;
+    }
+
+    return 'global';
+  }
+
+  private getHeaders(request: Request): Record<string, unknown> {
+    const requestLike = request as Partial<Request> & { headers?: unknown };
+    const candidate = requestLike.headers;
+    if (candidate && typeof candidate === 'object') {
+      return candidate as Record<string, unknown>;
+    }
+    return {};
+  }
+}
+
+interface HeaderWritableResponse {
+  set(field: string, value: string): unknown;
 }
