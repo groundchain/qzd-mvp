@@ -59,7 +59,7 @@ function serializeBody(bodyText: string | null): string {
   }
 }
 
-function createSignaturePayload(
+export function createSignaturePayload(
   method: string,
   pathWithQuery: string,
   idempotencyKey: string,

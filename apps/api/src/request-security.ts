@@ -9,6 +9,7 @@ import type { Request } from 'express';
 import { createHash } from 'node:crypto';
 import { hexToBytes } from '@noble/curves/abstract/utils';
 import { ed25519 } from '@noble/curves/ed25519';
+import { createSignaturePayload as createSharedSignaturePayload } from '@qzd/shared/request-security';
 
 const IDEMPOTENCY_HEADER = 'idempotency-key';
 const NONCE_HEADER = 'x-qzd-nonce';
@@ -62,15 +63,14 @@ export function serializeBody(body: unknown): string {
   return JSON.stringify(body ?? null);
 }
 
-export function createSignaturePayload({
-  method,
-  path,
-  idempotencyKey,
-  nonce,
-  serializedBody,
-}: SignatureComponents): Uint8Array {
-  const canonical = `${method}\n${path}\n${idempotencyKey}\n${nonce}\n${serializedBody}`;
-  return new TextEncoder().encode(canonical);
+export function createSignaturePayload(components: SignatureComponents): Uint8Array {
+  return createSharedSignaturePayload(
+    components.method,
+    components.path,
+    components.idempotencyKey,
+    components.nonce,
+    components.serializedBody,
+  );
 }
 
 export class RequestSecurityManager {
