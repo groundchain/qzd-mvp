@@ -1,3 +1,12 @@
+## [0.1.9](https://github.com/groundchain/qzd-mvp/compare/v0.1.8...v0.1.9) (2025-10-01)
+
+
+### Bug Fixes
+
+* install jre for openapi generation ([#52](https://github.com/groundchain/qzd-mvp/issues/52)) ([3e65f81](https://github.com/groundchain/qzd-mvp/commit/3e65f81b7657df83eeef08738e4f15945ae93186))
+
+
+
 ## [0.1.8](https://github.com/groundchain/qzd-mvp/compare/v0.1.7...v0.1.8) (2025-09-30)
 
 
