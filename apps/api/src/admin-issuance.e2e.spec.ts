@@ -13,7 +13,7 @@ import {
   createTestClient,
   getResponseBody,
   type TestClient,
-} from './test-helpers/request-security.js';
+} from './test-helpers/e2e-utils.js';
 
 type InternalAccountRecord = {
   id: string;

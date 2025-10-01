@@ -80,6 +80,47 @@ export function createSignaturePayload(
   return textEncoder.encode(canonical);
 }
 
+export interface HeaderWritable {
+  set(field: string, value: string): unknown;
+}
+
+export interface MutationSecurityOverrides {
+  idempotencyKey?: string;
+  nonce?: string;
+  signingKeyHex?: string;
+}
+
+export interface MutationSecurityHeaders {
+  idempotencyKey: string;
+  nonce: string;
+  signature: string;
+}
+
+export function createMutationSecurityHeaders(
+  method: string,
+  path: string,
+  body: unknown,
+  overrides: MutationSecurityOverrides = {},
+): MutationSecurityHeaders {
+  const idempotencyKey = overrides.idempotencyKey ?? createIdempotencyKey();
+  const nonce = overrides.nonce ?? createNonce();
+  const serializedBody = serializeBody(body);
+  const signingKeyHex = overrides.signingKeyHex ?? DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX;
+  const payload = createSignaturePayload(method, path, idempotencyKey, nonce, serializedBody);
+  const signature = bytesToHex(ed25519.sign(payload, ensureSigningKeyBytes(signingKeyHex)));
+  return { idempotencyKey, nonce, signature };
+}
+
+export function applyMutationSecurityHeaders<TTarget extends HeaderWritable>(
+  target: TTarget,
+  headers: MutationSecurityHeaders,
+): TTarget {
+  target.set('Idempotency-Key', headers.idempotencyKey);
+  target.set('X-QZD-Nonce', headers.nonce);
+  target.set('X-QZD-Signature', headers.signature);
+  return target;
+}
+
 export function createIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `idem-${crypto.randomUUID()}`;

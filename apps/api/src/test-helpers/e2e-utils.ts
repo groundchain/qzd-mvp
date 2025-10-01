@@ -1,13 +1,10 @@
-import { randomBytes } from 'node:crypto';
 import supertest from 'supertest';
-import { ed25519 } from '@noble/curves/ed25519';
-import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
 import {
-  DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX,
   DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX,
-  createIdempotencyKey,
-  createSignaturePayloadFromComponents as createSignaturePayload,
-  serializeBody,
+  applyMutationSecurityHeaders,
+  createMutationSecurityHeaders,
+  type MutationSecurityHeaders,
+  type MutationSecurityOverrides,
 } from '@qzd/shared/request-security';
 
 type HeaderValue = string | number | readonly string[];
@@ -23,39 +20,11 @@ type ChainableTest = supertest.Test &
 
 type TestClient = { post(path: string): ChainableTest; get(path: string): ChainableTest };
 
-type SecurityOverrides = {
-  idempotencyKey?: string;
-  nonce?: string;
-};
+type SecurityHeaders = MutationSecurityHeaders;
 
-interface SecurityHeaders {
-  idempotencyKey: string;
-  nonce: string;
-  signature: string;
-}
+type SecurityOverrides = MutationSecurityOverrides;
 
-const DEV_SIGNING_PRIVATE_KEY_BYTES = hexToBytes(DEFAULT_DEV_SIGNING_PRIVATE_KEY_HEX);
 const DEV_SIGNING_PUBLIC_KEY_HEX = DEFAULT_REQUEST_SIGNING_PUBLIC_KEY_HEX;
-
-function buildSecurityHeaders(
-  method: string,
-  path: string,
-  body: unknown,
-  overrides: SecurityOverrides = {},
-): SecurityHeaders {
-  const idempotencyKey = overrides.idempotencyKey ?? createIdempotencyKey();
-  const nonce = overrides.nonce ?? bytesToHex(randomBytes(16));
-  const serializedBody = serializeBody(body);
-  const payload = createSignaturePayload({
-    method,
-    path,
-    idempotencyKey,
-    nonce,
-    serializedBody,
-  });
-  const signature = bytesToHex(ed25519.sign(payload, DEV_SIGNING_PRIVATE_KEY_BYTES));
-  return { idempotencyKey, nonce, signature };
-}
 
 function applySecurity(
   request: ChainableTest,
@@ -64,11 +33,8 @@ function applySecurity(
   body: unknown,
   overrides: SecurityOverrides = {},
 ): { request: ChainableTest; headers: SecurityHeaders } {
-  const headers = buildSecurityHeaders(method, path, body, overrides);
-  request
-    .set('Idempotency-Key', headers.idempotencyKey)
-    .set('X-QZD-Nonce', headers.nonce)
-    .set('X-QZD-Signature', headers.signature);
+  const headers = createMutationSecurityHeaders(method, path, body, overrides);
+  applyMutationSecurityHeaders(request, headers);
   return { request, headers };
 }
 
@@ -101,7 +67,6 @@ function extractErrorDetails(payload: ErrorPayload): { code?: string; message?: 
 
 export {
   applySecurity,
-  buildSecurityHeaders,
   createTestClient,
   extractErrorDetails,
   getResponseBody,

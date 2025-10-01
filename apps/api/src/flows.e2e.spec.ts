@@ -15,7 +15,7 @@ import {
   type ErrorPayload,
   type SecurityOverrides,
   type TestClient,
-} from './test-helpers/request-security.js';
+} from './test-helpers/e2e-utils.js';
 
 describe('Wallet flows', () => {
   let app: INestApplication;
