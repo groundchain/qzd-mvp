@@ -25,9 +25,12 @@ test('wallet happy path smoke test', async ({ page }) => {
 
   const balanceRegion = page.getByRole('region', { name: 'Balance' });
   await expect(balanceRegion.getByRole('definition').first()).toHaveText('1000.00 QZD');
-  await expect(
-    page.getByRole('region', { name: 'Transactions' }).getByText('No transactions to display.'),
-  ).toBeVisible();
+  const transactionsRegion = page.getByRole('region', { name: 'Transactions' });
+  const emptyTransactionsState = transactionsRegion.getByRole('heading', {
+    level: 3,
+    name: 'No transactions yet',
+  });
+  await expect(emptyTransactionsState).toBeVisible();
 
   const transferRegion = page.getByRole('region', { name: 'Send transfer' });
   const transferAmount = '0.25';
@@ -40,8 +43,7 @@ test('wallet happy path smoke test', async ({ page }) => {
   await expect(balanceRegion.getByRole('definition').first()).toHaveText(`${expectedBalance} QZD`);
   await expect(balanceRegion.getByRole('definition').nth(1)).toHaveText(`${expectedBalance} QZD`);
 
-  const transactionsRegion = page.getByRole('region', { name: 'Transactions' });
-  await expect(transactionsRegion.getByText('No transactions to display.')).not.toBeVisible();
+  await expect(emptyTransactionsState).toHaveCount(0);
 
   const latestTransaction = transactionsRegion.getByRole('listitem').first();
   await expect(latestTransaction).toContainText('transfer');
