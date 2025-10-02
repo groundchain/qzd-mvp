@@ -1,3 +1,17 @@
+# [0.2.0](https://github.com/groundchain/qzd-mvp/compare/v0.1.9...v0.2.0) (2025-10-02)
+
+
+### Bug Fixes
+
+* restore pnpm dev commands for admin, api, merchant ([#54](https://github.com/groundchain/qzd-mvp/issues/54)) ([0c3239d](https://github.com/groundchain/qzd-mvp/commit/0c3239d3f7ecab480e2cc4ce6920619f407142f3))
+
+
+### Features
+
+* enforce API request rate limits ([#61](https://github.com/groundchain/qzd-mvp/issues/61)) ([ffeaf3c](https://github.com/groundchain/qzd-mvp/commit/ffeaf3c5c19125d188385e878b2deb1ee9a0f0cf))
+
+
+
 ## [0.1.9](https://github.com/groundchain/qzd-mvp/compare/v0.1.8...v0.1.9) (2025-10-01)
 
 
