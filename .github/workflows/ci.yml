@@ -31,12 +31,29 @@ jobs:
           mkdir -p "$HOME/go/bin"
           GOBIN="$HOME/go/bin" go install github.com/oasdiff/oasdiff@v1.11.7
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Lint OpenAPI specification
         run: pnpm oas:lint
       - name: Check for OpenAPI breaking changes
         run: ./scripts/check-openapi-breaking.sh origin/main
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: Spec governance
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  build:
+  contract-tests:
+    name: Contract tests
     runs-on: ubuntu-latest
     needs:
       - spec-governance
@@ -51,11 +68,145 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Lint
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Run contract validation suite
+        run: pnpm test:contract
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: Contract validation
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  unit-tests:
+    name: Quality and unit coverage
+    runs-on: ubuntu-latest
+    needs:
+      - contract-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Lint workspaces
         run: pnpm lint
-      - name: Typecheck
+      - name: Typecheck workspaces
         run: pnpm typecheck
-      - name: Build
+      - name: Build workspaces
         run: pnpm build
-      - name: Test
-        run: pnpm test
+      - name: Shared coverage gate
+        run: pnpm --filter @qzd/shared test -- --coverage --reporter=basic
+      - name: Ledger coverage gate
+        run: pnpm --filter @qzd/ledger test -- --coverage --reporter=basic
+      - name: SDK coverage gate
+        run: pnpm --filter @qzd/sdk test -- --coverage --reporter=basic
+      - name: API unit coverage gate
+        run: pnpm --filter @qzd/api test -- --coverage --reporter=basic --exclude "src/**/*.e2e.spec.ts"
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: Unit quality gates
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  api-e2e:
+    name: API e2e
+    runs-on: ubuntu-latest
+    needs:
+      - unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Run API e2e suite
+        env:
+          COVERAGE: 'false'
+        run: pnpm --filter @qzd/api test:e2e --reporter=basic
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: API e2e
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ui-smoke:
+    name: Wallet UI smoke
+    runs-on: ubuntu-latest
+    needs:
+      - api-e2e
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Run wallet smoke tests
+        env:
+          COVERAGE: 'false'
+        run: pnpm test:wallet:smoke --reporter=list
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: UI smoke
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"

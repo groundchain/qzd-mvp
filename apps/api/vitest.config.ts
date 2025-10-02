@@ -8,6 +8,8 @@ const sdkApiServerDir = fileURLToPath(new URL('../../packages/sdk-api/src/server
 const require = createRequire(import.meta.url);
 const nobleHashesDir = dirname(require.resolve('@noble/hashes/sha256.js')).replace(/\\/g, '/');
 const nobleCurvesDir = dirname(require.resolve('@noble/curves/secp256k1.js')).replace(/\\/g, '/');
+const coverageFlag = process.env.COVERAGE;
+const enableCoverage = coverageFlag ? coverageFlag !== 'false' : Boolean(process.env.CI);
 
 export default defineConfig({
   ssr: {
@@ -88,7 +90,15 @@ export default defineConfig({
       }
     },
     coverage: {
-      reporter: ['text', 'html']
+      enabled: enableCoverage,
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      thresholds: {
+        statements: 10,
+        branches: 50,
+        functions: 50,
+        lines: 10
+      }
     }
   }
 });
