@@ -143,6 +143,65 @@ describe('Admin alerts', () => {
     await request.set('Authorization', `Bearer ${token}`).send(body).expect(204);
   }
 
+  async function listAlerts(
+    token: string,
+  ): Promise<Array<{ id?: string; rule?: string; details?: Record<string, unknown> }>> {
+    const response = await client().get('/admin/alerts').set('Authorization', `Bearer ${token}`).expect(200);
+    const payload = getResponseBody<{
+      alerts?: Array<{ id?: string; rule?: string; details?: Record<string, unknown> }>;
+    }>(response);
+    return payload.alerts ?? [];
+  }
+
+  it('triggers each AML alert exactly once and clears them after acknowledgement', async () => {
+    const { token: adminToken } = await registerUser('aml-admin');
+    const { token: customerToken, accountId } = await registerUser('aml-customer');
+
+    for (let index = 0; index < 5; index += 1) {
+      await registerUser(`aml-burst-${index}`);
+    }
+
+    const burstAlerts = (await listAlerts(adminToken)).filter((alert) => alert.rule === 'new_account_burst');
+    expect(burstAlerts).toHaveLength(1);
+    const burstAlert = burstAlerts[0]!;
+    expect(burstAlert.id).toBeTruthy();
+
+    await acknowledgeAlert(adminToken, burstAlert.id!);
+    const postBurstAlerts = await listAlerts(adminToken);
+    expect(postBurstAlerts.some((alert) => alert.id === burstAlert.id)).toBe(false);
+
+    const structuringAmounts = [98, 99, 97];
+    for (const [index, amount] of structuringAmounts.entries()) {
+      await performTransfer(customerToken, accountId, amount, `${accountId}-structuring-${index}`);
+    }
+
+    const structuringAlerts = (await listAlerts(adminToken)).filter((alert) => alert.rule === 'structuring');
+    expect(structuringAlerts).toHaveLength(1);
+    const structuringAlert = structuringAlerts[0]!;
+    expect(structuringAlert.details?.accountId).toBe(accountId);
+
+    await acknowledgeAlert(adminToken, structuringAlert.id!);
+    const postStructuringAlerts = await listAlerts(adminToken);
+    expect(postStructuringAlerts.some((alert) => alert.id === structuringAlert.id)).toBe(false);
+
+    for (let index = 0; index < 5; index += 1) {
+      await performTransfer(customerToken, accountId, 5, `${accountId}-velocity-${index}`);
+    }
+
+    const velocityAlerts = (await listAlerts(adminToken)).filter((alert) => alert.rule === 'velocity');
+    expect(velocityAlerts).toHaveLength(1);
+    const velocityAlert = velocityAlerts[0]!;
+    expect(velocityAlert.details?.accountId).toBe(accountId);
+
+    await acknowledgeAlert(adminToken, velocityAlert.id!);
+    const remainingAlerts = await listAlerts(adminToken);
+    expect(
+      remainingAlerts.some((alert) =>
+        [burstAlert.id, structuringAlert.id, velocityAlert.id].includes(alert.id),
+      ),
+    ).toBe(false);
+  });
+
   it('emits a new-account burst alert and supports acknowledgement', async () => {
     const { token } = await registerUser('admin');
 
@@ -205,6 +264,7 @@ describe('Admin alerts', () => {
     const velocityAlert = (velocityPayload.alerts ?? []).find((alert) => alert.rule === 'velocity');
     expect(velocityAlert?.details?.accountId).toBe(accountId);
   });
+
 
   it('raises a balance mismatch alert after nightly reconciliation detects divergence', async () => {
     const { token, accountId } = await registerUser('recon');
