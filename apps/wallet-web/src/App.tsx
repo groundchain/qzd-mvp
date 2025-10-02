@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import {
   AccountsApi,
   AuthApi,
@@ -41,14 +41,14 @@ function sanitizeBaseUrl(value: string | undefined): string {
 
 function formatAmount(amount: MonetaryAmount | undefined): string {
   if (!amount) {
-    return '—';
+    return '\\u2014';
   }
   return `${amount.value} ${amount.currency}`;
 }
 
 function formatTimestamp(timestamp: Date | string | undefined): string {
   if (!timestamp) {
-    return '—';
+    return '\\u2014';
   }
 
   const asDate = timestamp instanceof Date ? timestamp : new Date(timestamp);
@@ -57,6 +57,31 @@ function formatTimestamp(timestamp: Date | string | undefined): string {
   }
 
   return asDate.toLocaleString();
+}
+
+type EmptyStateProps = {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+};
+
+function EmptyState({ title, description, action }: EmptyStateProps) {
+  return (
+    <div className="empty-state">
+      <h3>{title}</h3>
+      {description ? <p>{description}</p> : null}
+      {action}
+    </div>
+  );
+}
+
+function LoadingIndicator({ label }: { label: string }) {
+  return (
+    <span className="loading-indicator" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      {label}
+    </span>
+  );
 }
 
 export default function App() {
@@ -417,306 +442,445 @@ export default function App() {
   const canPreviewQuote = canUseAccountActions && quoteStatus !== 'pending';
   const canRedeemOfflineVoucher = canUseAccountActions && offlineVoucherStatus !== 'pending';
   const scenarioToggleDisabled = !canUseAccountActions || quoteStatus === 'pending';
+  const isAuthenticated = Boolean(token);
+  const navLinks = [
+    { href: '#auth-section', label: 'Register / Log in' },
+    { href: '#account-section', label: 'Account tools' },
+    { href: '#balance-section', label: 'Balance' },
+    { href: '#transactions-section', label: 'Transactions' },
+    { href: '#transfer-section', label: 'Send transfer' },
+    { href: '#quote-section', label: 'Preview quote' },
+    { href: '#offline-section', label: 'Redeem offline voucher' },
+  ];
 
   return (
-    <main className="app-shell">
-      <header>
-        <h1>QZD Wallet</h1>
-        <p>
-          API base URL: <code>{configuredBaseUrl}</code>
-        </p>
-        {token ? <p role="status">Session active.</p> : <p role="status">Not signed in.</p>}
-        {statusMessage && (
-          <p className="status" aria-live="polite">
-            {statusMessage}
-          </p>
-        )}
-      </header>
-
-      {!token && (
-        <section aria-labelledby="auth-section">
-          <h2 id="auth-section">Register / Log in</h2>
-          <div className="panel">
-            <form onSubmit={handleRegister} className="auth-form">
-              <h3>Register</h3>
-              <label>
-                Email
-                <input name="register-email" type="email" autoComplete="email" required />
-              </label>
-              <label>
-                Password
-                <input name="register-password" type="password" autoComplete="new-password" required />
-              </label>
-              <label>
-                Full name
-                <input name="register-name" type="text" autoComplete="name" required />
-              </label>
-              <button type="submit">Register</button>
-            </form>
-
-            <form onSubmit={handleLogin} className="auth-form">
-              <h3>Log in</h3>
-              <label>
-                Email
-                <input name="login-email" type="email" autoComplete="email" required />
-              </label>
-              <label>
-                Password
-                <input name="login-password" type="password" autoComplete="current-password" required />
-              </label>
-              <button type="submit">Sign in</button>
-            </form>
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <header className="app-header">
+        <div className="container">
+          <div>
+            <h1 className="app-title">QZD Wallet</h1>
+            <p className="app-subtitle">
+              Manage sandbox balances, send transfers, preview quotes, and redeem offline vouchers.
+            </p>
           </div>
-        </section>
-      )}
-
-      {token && (
-        <section aria-labelledby="account-section">
-          <h2 id="account-section">Load account</h2>
-          <form onSubmit={handleAccountSelection} className="account-form">
-            <label>
-              Account ID
-              <input
-                value={accountIdInput}
-                onChange={(event) => setAccountIdInput(event.target.value)}
-                placeholder="acct_..."
-              />
-            </label>
-            <button type="submit">Load account</button>
-          </form>
-        </section>
-      )}
-
-      {token && (
-        <section aria-labelledby="balance-section">
-          <h2 id="balance-section">Balance</h2>
-          {!accountId && <p>Enter an account ID and load it to view balances.</p>}
-          {accountId && accountStatus === 'pending' && <p aria-live="polite">Loading account data…</p>}
-          {accountId && accountStatus === 'idle' && !accountLoaded && (
-            <p>Unable to load account details. Verify the account ID.</p>
-          )}
-          {accountLoaded && balance && (
-            <dl>
-              <div>
-                <dt>Available</dt>
-                <dd>{formatAmount(balance.available)}</dd>
-              </div>
-              <div>
-                <dt>Total</dt>
-                <dd>{formatAmount(balance.total)}</dd>
-              </div>
-              <div>
-                <dt>Updated</dt>
-                <dd>{formatTimestamp(balance.updatedAt)}</dd>
-              </div>
-            </dl>
-          )}
-        </section>
-      )}
-
-      {token && (
-        <section aria-labelledby="transactions-section">
-          <h2 id="transactions-section">Transactions</h2>
-          {!accountLoaded && <p>Load an account to view recent transactions.</p>}
-          {accountLoaded && transactions.length === 0 ? (
-            <p>No transactions to display.</p>
+          <div className="session-meta">
+            <span className="session-pill" data-status={isAuthenticated ? 'active' : 'inactive'}>
+              {isAuthenticated ? 'Session active' : 'Not signed in'}
+            </span>
+            <span>
+              API base URL: <code className="code-inline">{configuredBaseUrl}</code>
+            </span>
+          </div>
+          {statusMessage ? (
+            <p className="status-banner" role="status" aria-live="polite">
+              {statusMessage}
+            </p>
           ) : null}
-          {accountLoaded && transactions.length > 0 && (
-            <ul>
-              {transactions.map((transaction) => (
-                <li key={transaction.id}>
-                  <strong>{transaction.type}</strong> · {formatAmount(transaction.amount)} · {transaction.status}{' '}
-                  · {formatTimestamp(transaction.createdAt)}
-                  {transaction.counterpartyAccountId && (
-                    <>
-                      {' '}
-                      · Counterparty: {transaction.counterpartyAccountId}
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+        </div>
+      </header>
+      <nav className="app-nav" aria-label="Wallet sections">
+        <div className="container">
+          <ul>
+            {navLinks.map((link) => (
+              <li key={link.href}>
+                <a href={link.href}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+      <main id="main-content" className="app-main">
+        <div className="container">
+          <section className="section-card" aria-labelledby="auth-section-title" id="auth-section">
+            <header>
+              <h2 id="auth-section-title">Register / Log in</h2>
+              <p>Create sandbox credentials or sign back in to continue testing.</p>
+            </header>
+            {isAuthenticated ? (
+              <EmptyState
+                title="Session active"
+                description="You are signed in. Load an account below to view balances and recent activity."
+              />
+            ) : (
+              <div className="form-grid two-column">
+                <form onSubmit={handleRegister} className="form-grid">
+                  <h3>Register</h3>
+                  <label>
+                    Email
+                    <input name="register-email" type="email" autoComplete="email" required />
+                  </label>
+                  <label>
+                    Password
+                    <input name="register-password" type="password" autoComplete="new-password" required />
+                  </label>
+                  <label>
+                    Full name
+                    <input name="register-name" type="text" autoComplete="name" required />
+                  </label>
+                  <button type="submit">Register</button>
+                </form>
+                <form onSubmit={handleLogin} className="form-grid">
+                  <h3>Log in</h3>
+                  <label>
+                    Email
+                    <input name="login-email" type="email" autoComplete="email" required />
+                  </label>
+                  <label>
+                    Password
+                    <input name="login-password" type="password" autoComplete="current-password" required />
+                  </label>
+                  <button type="submit">Sign in</button>
+                </form>
+              </div>
+            )}
+          </section>
 
-      {token && (
-        <section aria-labelledby="transfer-section">
-          <h2 id="transfer-section">Send transfer</h2>
-          {!accountLoaded && <p>Load an account to send funds.</p>}
-          {accountLoaded && (
-            <form onSubmit={handleSendTransfer} className="transfer-form">
-              <label>
-                Destination account
-                <input
-                  value={transferDestination}
-                  onChange={(event) => setTransferDestination(event.target.value)}
-                  required
-                  disabled={!canUseAccountActions || transferStatus === 'pending'}
-                />
-              </label>
-              <label>
-                Currency
-                <input
-                  value={transferCurrency}
-                  onChange={(event) => setTransferCurrency(event.target.value)}
-                  disabled={!canUseAccountActions || transferStatus === 'pending'}
-                />
-              </label>
-              <label>
-                Amount
-                <input
-                  value={transferAmount}
-                  onChange={(event) => setTransferAmount(event.target.value)}
-                  required
-                  disabled={!canUseAccountActions || transferStatus === 'pending'}
-                />
-              </label>
-              <label>
-                Memo
-                <input
-                  value={transferMemo}
-                  onChange={(event) => setTransferMemo(event.target.value)}
-                  placeholder="Optional"
-                  disabled={!canUseAccountActions || transferStatus === 'pending'}
-                />
-              </label>
-              <button type="submit" disabled={!canSubmitTransfer}>
-                {transferStatus === 'pending' ? 'Sending…' : 'Send'}
-              </button>
-            </form>
-          )}
-        </section>
-      )}
+          <section className="section-card" aria-labelledby="account-section-title" id="account-section">
+            <header>
+              <h2 id="account-section-title">Account tools</h2>
+              <p>Select an account to fetch balances and transactions.</p>
+            </header>
+            {isAuthenticated ? (
+              <form onSubmit={handleAccountSelection} className="form-grid two-column">
+                <label>
+                  Account ID
+                  <input
+                    value={accountIdInput}
+                    onChange={(event) => setAccountIdInput(event.target.value)}
+                    placeholder="acct_..."
+                  />
+                </label>
+                <button type="submit" disabled={accountStatus === 'pending'}>
+                  {accountStatus === 'pending' ? 'Loading...' : 'Load account'}
+                </button>
+              </form>
+            ) : (
+              <EmptyState
+                title="Sign in required"
+                description="Register or log in to choose an account."
+              />
+            )}
+          </section>
 
-      {token && (
-        <section aria-labelledby="quote-section">
-          <h2 id="quote-section">Preview quote</h2>
-          {!accountLoaded && <p>Load an account to preview quotes.</p>}
-          {accountLoaded && (
-            <form onSubmit={handlePreviewQuote} className="quote-form">
-              <label>
-                USD amount
-                <input
-                  value={quoteAmount}
-                  onChange={(event) => setQuoteAmount(event.target.value)}
-                  required
-                  disabled={!canUseAccountActions || quoteStatus === 'pending'}
-                />
-              </label>
-              <fieldset disabled={scenarioToggleDisabled}>
-                <legend>Scenario</legend>
-                <div role="group" aria-label="Quote scenario">
-                  {QUOTE_SCENARIOS.map((scenario) => (
-                    <button
-                      key={scenario}
-                      type="button"
-                      onClick={() => setQuoteScenario(scenario)}
-                      disabled={scenarioToggleDisabled}
-                      aria-pressed={quoteScenario === scenario}
-                      style={{ fontWeight: quoteScenario === scenario ? 600 : 400, marginRight: '0.5rem' }}
-                    >
-                      {scenario}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-              <button type="submit" disabled={!canPreviewQuote}>
-                {quoteStatus === 'pending' ? 'Fetching…' : 'Preview quote'}
-              </button>
-            </form>
-          )}
+          <section className="section-card" aria-labelledby="balance-section-title" id="balance-section">
+            <header>
+              <h2 id="balance-section-title">Balance</h2>
+              <p>Review available and total balances for the selected account.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Sign in to view balances"
+                description="Authenticate above to see account balances."
+              />
+            ) : !accountId ? (
+              <EmptyState
+                title="No account loaded"
+                description={'Enter an account ID and select "Load account" to fetch balance details.'}
+              />
+            ) : accountStatus === 'pending' ? (
+              <LoadingIndicator label="Loading account data..." />
+            ) : !accountLoaded ? (
+              <EmptyState
+                title="Account unavailable"
+                description="Unable to load account details. Verify the account ID and try again."
+              />
+            ) : balance ? (
+              <div className="account-summary">
+                <h3>Current balance</h3>
+                <dl>
+                  <div className="details-pair">
+                    <dt>Available</dt>
+                    <dd>{formatAmount(balance.available)}</dd>
+                  </div>
+                  <div className="details-pair">
+                    <dt>Total</dt>
+                    <dd>{formatAmount(balance.total)}</dd>
+                  </div>
+                  <div className="details-pair">
+                    <dt>Updated</dt>
+                    <dd>{formatTimestamp(balance.updatedAt)}</dd>
+                  </div>
+                </dl>
+              </div>
+            ) : (
+              <EmptyState
+                title="No balance data"
+                description="The API did not return balance details for this account."
+              />
+            )}
+          </section>
 
-          {accountLoaded && quote && (
-            <div className="quote-details">
-              <h3>Quote details</h3>
-              <dl>
-                <div>
-                  <dt>Scenario</dt>
-                  <dd>{quoteScenarioResult ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt>Quote ID</dt>
-                  <dd>{quote.quoteId}</dd>
-                </div>
-                <div>
-                  <dt>Sell amount</dt>
-                  <dd>{formatAmount(quote.sellAmount)}</dd>
-                </div>
-                <div>
-                  <dt>Buy amount</dt>
-                  <dd>{formatAmount(quote.buyAmount)}</dd>
-                </div>
-                <div>
-                  <dt>Rate</dt>
-                  <dd>{quote.rate}</dd>
-                </div>
-                <div>
-                  <dt>Expires</dt>
-                  <dd>{formatTimestamp(quote.expiresAt)}</dd>
-                </div>
-              </dl>
-            </div>
-          )}
-        </section>
-      )}
+          <section className="section-card" aria-labelledby="transactions-section-title" id="transactions-section">
+            <header>
+              <h2 id="transactions-section-title">Transactions</h2>
+              <p>Most recent account activity is listed here.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Sign in to view transactions"
+                description="Authenticate above to explore recent account activity."
+              />
+            ) : !accountId ? (
+              <EmptyState
+                title="Load an account"
+                description="Choose an account ID to retrieve transactions."
+              />
+            ) : accountStatus === 'pending' ? (
+              <LoadingIndicator label="Loading transactions..." />
+            ) : !accountLoaded ? (
+              <EmptyState
+                title="Account unavailable"
+                description="We could not fetch transactions for this account."
+              />
+            ) : transactions.length === 0 ? (
+              <EmptyState
+                title="No transactions yet"
+                description="When this wallet account starts moving funds, activity will appear here."
+              />
+            ) : (
+              <ul className="transaction-list">
+                {transactions.map((transaction) => (
+                  <li key={transaction.id}>
+                    <strong>{transaction.type}</strong>
+                    <span>{formatAmount(transaction.amount)}</span>
+                    <span>
+                      {transaction.status} - {formatTimestamp(transaction.createdAt)}
+                    </span>
+                    {transaction.counterpartyAccountId ? (
+                      <span>Counterparty: {transaction.counterpartyAccountId}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-      {token && (
-        <section aria-labelledby="offline-section">
-          <h2 id="offline-section">Redeem offline voucher</h2>
-          {!accountLoaded && <p>Load an account to redeem offline vouchers.</p>}
-          {accountLoaded && (
-            <form onSubmit={handleRedeemOfflineVoucher} className="offline-form">
-              <label>
-                Voucher payload
-                <textarea
-                  value={offlineVoucherInput}
-                  onChange={(event) => setOfflineVoucherInput(event.target.value)}
-                  rows={6}
-                  placeholder='{"id":"ovch_123","fromCardId":"card_001","toAccountId":"acc_123","amount":{"currency":"QZD","value":"10.00"},"nonce":"...","signature":"...","expiresAt":"2024-06-01T00:00:00Z"}'
-                  disabled={offlineVoucherStatus === 'pending'}
-                  required
-                />
-              </label>
-              <button type="submit" disabled={!canRedeemOfflineVoucher}>
-                {offlineVoucherStatus === 'pending' ? 'Redeeming…' : 'Redeem offline voucher'}
-              </button>
-            </form>
-          )}
+          <section className="section-card" aria-labelledby="transfer-section-title" id="transfer-section">
+            <header>
+              <h2 id="transfer-section-title">Send transfer</h2>
+              <p>Submit a simple account-to-account transfer.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Sign in to send transfers"
+                description="Register or log in before initiating transfers."
+              />
+            ) : !accountLoaded ? (
+              <EmptyState
+                title="Load an account first"
+                description="Select an account above to act as the transfer source."
+              />
+            ) : (
+              <form onSubmit={handleSendTransfer} className="form-grid two-column">
+                <label>
+                  Destination account
+                  <input
+                    value={transferDestination}
+                    onChange={(event) => setTransferDestination(event.target.value)}
+                    required
+                    disabled={!canUseAccountActions || transferStatus === 'pending'}
+                  />
+                </label>
+                <label>
+                  Currency
+                  <input
+                    value={transferCurrency}
+                    onChange={(event) => setTransferCurrency(event.target.value)}
+                    disabled={!canUseAccountActions || transferStatus === 'pending'}
+                  />
+                </label>
+                <label>
+                  Amount
+                  <input
+                    value={transferAmount}
+                    onChange={(event) => setTransferAmount(event.target.value)}
+                    required
+                    disabled={!canUseAccountActions || transferStatus === 'pending'}
+                  />
+                </label>
+                <label>
+                  Memo
+                  <input
+                    value={transferMemo}
+                    onChange={(event) => setTransferMemo(event.target.value)}
+                    placeholder="Optional"
+                    disabled={!canUseAccountActions || transferStatus === 'pending'}
+                  />
+                </label>
+                <button type="submit" disabled={!canSubmitTransfer}>
+                  {transferStatus === 'pending' ? 'Sending...' : 'Send'}
+                </button>
+              </form>
+            )}
+          </section>
 
-          {accountLoaded && redeemedOfflineVoucher && (
-            <div className="offline-voucher-result">
-              <h3>Redeemed voucher</h3>
-              <dl>
-                <div>
-                  <dt>Voucher ID</dt>
-                  <dd>{redeemedOfflineVoucher.id}</dd>
-                </div>
-                <div>
-                  <dt>Card</dt>
-                  <dd>{redeemedOfflineVoucher.fromCardId}</dd>
-                </div>
-                <div>
-                  <dt>Amount</dt>
-                  <dd>{formatAmount(redeemedOfflineVoucher.amount)}</dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>{redeemedOfflineVoucher.status}</dd>
-                </div>
-                <div>
-                  <dt>Expires</dt>
-                  <dd>{formatTimestamp(redeemedOfflineVoucher.expiresAt)}</dd>
-                </div>
-              </dl>
-            </div>
-          )}
+          <section className="section-card" aria-labelledby="quote-section-title" id="quote-section">
+            <header>
+              <h2 id="quote-section-title">Preview quote</h2>
+              <p>Simulate currency conversion scenarios for remittances.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Sign in to preview quotes"
+                description="Authenticate above and load an account to simulate remittances."
+              />
+            ) : !accountLoaded ? (
+              <EmptyState
+                title="Load an account first"
+                description="Quotes reference the currently loaded account."
+              />
+            ) : (
+              <>
+                <form onSubmit={handlePreviewQuote} className="form-grid">
+                  <label>
+                    USD amount
+                    <input
+                      value={quoteAmount}
+                      onChange={(event) => setQuoteAmount(event.target.value)}
+                      required
+                      disabled={!canUseAccountActions || quoteStatus === 'pending'}
+                    />
+                  </label>
+                  <fieldset className="form-grid" disabled={scenarioToggleDisabled}>
+                    <legend>Scenario</legend>
+                    <div className="button-group" role="group" aria-label="Quote scenario">
+                      {QUOTE_SCENARIOS.map((scenario) => (
+                        <button
+                          key={scenario}
+                          type="button"
+                          onClick={() => setQuoteScenario(scenario)}
+                          disabled={scenarioToggleDisabled}
+                          aria-pressed={quoteScenario === scenario}
+                          className="button-chip"
+                        >
+                          {scenario}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button type="submit" disabled={!canPreviewQuote}>
+                    {quoteStatus === 'pending' ? 'Fetching...' : 'Preview quote'}
+                  </button>
+                </form>
+                {quote && (
+                  <div className="quote-details">
+                    <h3>Quote details</h3>
+                    <dl>
+                      <div className="details-pair">
+                        <dt>Scenario</dt>
+                        <dd>{quoteScenarioResult ?? '\\u2014'}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Quote ID</dt>
+                        <dd>{quote.quoteId}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Sell amount</dt>
+                        <dd>{formatAmount(quote.sellAmount)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Buy amount</dt>
+                        <dd>{formatAmount(quote.buyAmount)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Rate</dt>
+                        <dd>{quote.rate}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Expires</dt>
+                        <dd>{formatTimestamp(quote.expiresAt)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                )}
+                {!quote && quoteStatus === 'idle' && (
+                  <EmptyState
+                    title="No quote requested yet"
+                    description="Enter an amount and choose a scenario to preview a quote."
+                  />
+                )}
+              </>
+            )}
+          </section>
 
-          {accountLoaded && !redeemedOfflineVoucher && offlineVoucherStatus === 'idle' && (
-            <p>No offline voucher redeemed yet.</p>
-          )}
-        </section>
-      )}
-    </main>
+          <section className="section-card" aria-labelledby="offline-section-title" id="offline-section">
+            <header>
+              <h2 id="offline-section-title">Redeem offline voucher</h2>
+              <p>Register and redeem signed offline vouchers.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Sign in to redeem vouchers"
+                description="Authenticate above to redeem signed offline vouchers."
+              />
+            ) : !accountLoaded ? (
+              <EmptyState
+                title="Load an account first"
+                description="Offline vouchers credit the currently loaded account."
+              />
+            ) : (
+              <>
+                <form onSubmit={handleRedeemOfflineVoucher} className="form-grid">
+                  <label>
+                    Voucher payload
+                    <textarea
+                      value={offlineVoucherInput}
+                      onChange={(event) => setOfflineVoucherInput(event.target.value)}
+                      rows={6}
+                      placeholder='{"id":"ovch_123","fromCardId":"card_001","toAccountId":"acc_123","amount":{"currency":"QZD","value":"10.00"},"nonce":"...","signature":"...","expiresAt":"2024-06-01T00:00:00Z"}'
+                      disabled={offlineVoucherStatus === 'pending'}
+                      required
+                    />
+                  </label>
+                  <button type="submit" disabled={!canRedeemOfflineVoucher}>
+                    {offlineVoucherStatus === 'pending' ? 'Redeeming...' : 'Redeem offline voucher'}
+                  </button>
+                </form>
+                {redeemedOfflineVoucher ? (
+                  <div className="offline-voucher-result">
+                    <h3>Redeemed voucher</h3>
+                    <dl>
+                      <div className="details-pair">
+                        <dt>Voucher ID</dt>
+                        <dd>{redeemedOfflineVoucher.id}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Card</dt>
+                        <dd>{redeemedOfflineVoucher.fromCardId}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Amount</dt>
+                        <dd>{formatAmount(redeemedOfflineVoucher.amount)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Status</dt>
+                        <dd>{redeemedOfflineVoucher.status}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Expires</dt>
+                        <dd>{formatTimestamp(redeemedOfflineVoucher.expiresAt)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ) : (
+                  offlineVoucherStatus === 'idle' && (
+                    <EmptyState
+                      title="No voucher redeemed yet"
+                      description="Paste a signed voucher payload to test the offline redemption flow."
+                    />
+                  )
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </main>
+      <footer className="footer">
+        <div className="container">Sandbox tooling for QA, demos, and integration testing.</div>
+      </footer>
+    </div>
   );
 }
