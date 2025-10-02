@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import {
   AdminApi,
   AgentsApi,
@@ -35,7 +35,7 @@ function sanitizeBaseUrl(value: string | undefined): string {
 
 function formatAmount(amount: MonetaryAmount | undefined | null): string {
   if (!amount?.value || !amount?.currency) {
-    return '—';
+    return '\\u2014';
   }
   return `${amount.value} ${amount.currency}`;
 }
@@ -46,9 +46,34 @@ function formatProgress(request: IssuanceRequest): string {
 
 function formatTimestamp(timestamp: Voucher['createdAt'] | Voucher['redeemedAt']): string {
   if (!timestamp) {
-    return '—';
+    return '\\u2014';
   }
   return timestamp instanceof Date ? timestamp.toISOString() : timestamp;
+}
+
+type EmptyStateProps = {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+};
+
+function EmptyState({ title, description, action }: EmptyStateProps) {
+  return (
+    <div className="empty-state">
+      <h3>{title}</h3>
+      {description ? <p>{description}</p> : null}
+      {action}
+    </div>
+  );
+}
+
+function LoadingIndicator({ label }: { label: string }) {
+  return (
+    <span className="loading-indicator" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      {label}
+    </span>
+  );
 }
 
 export default function App() {
@@ -235,212 +260,307 @@ export default function App() {
     [agentsApi, resetStatus, token, voucherCodeInput],
   );
 
+  const isAuthenticated = Boolean(token);
+  const navLinks = [
+    { href: '#connection-section', label: 'Connection' },
+    { href: '#redeem-section', label: 'Voucher redemption' },
+    { href: '#issuance-section', label: 'Create request' },
+    { href: '#validator-section', label: 'Validator actions' },
+  ];
+
   return (
-    <main>
-      <h1>Issuance Queue</h1>
-
-      <section>
-        <h2>Connection</h2>
-        <form onSubmit={handleConnectionSubmit}>
-          <label>
-            API base URL
-            <input
-              type="text"
-              value={baseUrlInput}
-              onChange={(event) => setBaseUrlInput(event.target.value)}
-              placeholder={DEFAULT_API_BASE_URL}
-            />
-          </label>
-          <label>
-            Access token
-            <input
-              type="password"
-              value={tokenInput}
-              onChange={(event) => setTokenInput(event.target.value)}
-              placeholder="Paste bearer token"
-            />
-          </label>
-          <button type="submit">Save connection</button>
-        </form>
-      </section>
-
-      <section>
-        <h2>Voucher redemption</h2>
-        <form onSubmit={handleRedeemVoucher}>
-          <label>
-            Voucher code
-            <input
-              type="text"
-              value={voucherCodeInput}
-              onChange={(event) => setVoucherCodeInput(event.target.value)}
-              placeholder="vch_000001"
-            />
-          </label>
-          <button type="submit" disabled={redeemStatus === 'pending'}>
-            {redeemStatus === 'pending' ? 'Redeeming…' : 'Redeem voucher'}
-          </button>
-        </form>
-        {redeemedVoucher ? (
-          <article>
-            <header>
-              <h3>{redeemedVoucher.code}</h3>
-            </header>
-            <dl>
-              <div>
-                <dt>Amount</dt>
-                <dd>{formatAmount(redeemedVoucher.amount)}</dd>
-              </div>
-              <div>
-                <dt>Fee</dt>
-                <dd>{formatAmount(redeemedVoucher.fee)}</dd>
-              </div>
-              <div>
-                <dt>Total debited</dt>
-                <dd>{formatAmount(redeemedVoucher.totalDebited)}</dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd>{redeemedVoucher.status}</dd>
-              </div>
-              <div>
-                <dt>Created at</dt>
-                <dd>{formatTimestamp(redeemedVoucher.createdAt)}</dd>
-              </div>
-              {redeemedVoucher.redeemedAt ? (
-                <div>
-                  <dt>Redeemed at</dt>
-                  <dd>{formatTimestamp(redeemedVoucher.redeemedAt)}</dd>
-                </div>
-              ) : null}
-              {redeemedVoucher.metadata ? (
-                <div>
-                  <dt>Metadata</dt>
-                  <dd>
-                    <ul>
-                      {Object.entries(redeemedVoucher.metadata).map(([key, value]) => (
-                        <li key={key}>
-                          <strong>{key}:</strong> {value}
-                        </li>
-                      ))}
-                    </ul>
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-          </article>
-        ) : (
-          <p>No voucher redeemed yet.</p>
-        )}
-      </section>
-
-      <section>
-        <h2>Create issuance request</h2>
-        <form onSubmit={handleCreateRequest}>
-          <label>
-            Account ID
-            <input
-              type="text"
-              value={accountIdInput}
-              onChange={(event) => setAccountIdInput(event.target.value)}
-              placeholder="acct_000001"
-            />
-          </label>
-          <label>
-            Amount
-            <input
-              type="text"
-              value={amountInput}
-              onChange={(event) => setAmountInput(event.target.value)}
-              placeholder="100.00"
-            />
-          </label>
-          <label>
-            Currency
-            <input
-              type="text"
-              value={currencyInput}
-              onChange={(event) => setCurrencyInput(event.target.value)}
-              placeholder="QZD"
-            />
-          </label>
-          <label>
-            Reference (optional)
-            <input
-              type="text"
-              value={referenceInput}
-              onChange={(event) => setReferenceInput(event.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={createStatus === 'pending'}>
-            {createStatus === 'pending' ? 'Submitting…' : 'Submit issuance request'}
-          </button>
-        </form>
-      </section>
-
-      <section>
-        <h2>Validator actions</h2>
-        <div>
-          <label>
-            Validator identity
-            <select
-              value={selectedValidator}
-              onChange={(event) => setSelectedValidator(event.target.value as ValidatorId)}
-            >
-              {KNOWN_VALIDATORS.map((validator) => (
-                <option key={validator} value={validator}>
-                  {validator}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" onClick={handleRefresh} disabled={loading === 'pending'}>
-            {loading === 'pending' ? 'Loading…' : 'Refresh queue'}
-          </button>
+    <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <header className="app-header">
+        <div className="container">
+          <div>
+            <h1 className="app-title">Issuance Queue</h1>
+            <p className="app-subtitle">
+              Monitor issuance requests, redeem vouchers, and act as a validator across environments.
+            </p>
+          </div>
+          <div className="session-meta">
+            <span className="session-pill" data-status={isAuthenticated ? 'active' : 'inactive'}>
+              {isAuthenticated ? 'Token saved' : 'Token required'}
+            </span>
+            <span>
+              API base URL: <code className="code-inline">{baseUrl}</code>
+            </span>
+          </div>
+          {statusMessage ? (
+            <p className="status-banner" role="status" aria-live="polite">
+              {statusMessage}
+            </p>
+          ) : null}
         </div>
-        {statusMessage ? <p>{statusMessage}</p> : null}
-        {requests.length === 0 ? (
-          <p>No issuance requests available.</p>
-        ) : (
+      </header>
+      <nav className="app-nav" aria-label="Admin sections">
+        <div className="container">
           <ul>
-            {requests.map((request) => {
-              const isSigning = signingId === request.id;
-              const signingDisabled = isSigning || request.status === 'completed';
-              return (
-                <li key={request.id}>
-                  <article>
+            {navLinks.map((link) => (
+              <li key={link.href}>
+                <a href={link.href}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+      <main id="main-content" className="app-main">
+        <div className="container">
+          <section className="section-card" aria-labelledby="connection-title" id="connection-section">
+            <header>
+              <h2 id="connection-title">Connection</h2>
+              <p>Point the console at your API environment and provide an admin access token.</p>
+            </header>
+            <form onSubmit={handleConnectionSubmit} className="form-grid">
+              <label>
+                API base URL
+                <input
+                  type="text"
+                  value={baseUrlInput}
+                  onChange={(event) => setBaseUrlInput(event.target.value)}
+                  placeholder={DEFAULT_API_BASE_URL}
+                />
+              </label>
+              <label>
+                Access token
+                <input
+                  type="password"
+                  value={tokenInput}
+                  onChange={(event) => setTokenInput(event.target.value)}
+                  placeholder="Paste bearer token"
+                />
+              </label>
+              <button type="submit">Save connection</button>
+            </form>
+          </section>
+
+          <section className="section-card" aria-labelledby="redeem-title" id="redeem-section">
+            <header>
+              <h2 id="redeem-title">Voucher redemption</h2>
+              <p>Test voucher codes issued to agents and confirm settlement details.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Add an access token"
+                description="Provide a valid admin token above to redeem vouchers."
+              />
+            ) : (
+              <>
+                <form onSubmit={handleRedeemVoucher} className="form-grid two-column">
+                  <label>
+                    Voucher code
+                    <input
+                      type="text"
+                      value={voucherCodeInput}
+                      onChange={(event) => setVoucherCodeInput(event.target.value)}
+                      placeholder="vch_000001"
+                    />
+                  </label>
+                  <button type="submit" disabled={redeemStatus === 'pending'}>
+                    {redeemStatus === 'pending' ? 'Redeeming...' : 'Redeem voucher'}
+                  </button>
+                </form>
+                {redeemedVoucher ? (
+                  <div className="card-item">
                     <header>
-                      <h3>{request.id}</h3>
+                      <h3>{redeemedVoucher.code}</h3>
+                      <span
+                        className="badge"
+                        data-variant={redeemedVoucher.status === 'redeemed' ? 'completed' : 'pending'}
+                      >
+                        {redeemedVoucher.status}
+                      </span>
                     </header>
-                    <dl>
-                      <div>
-                        <dt>Account</dt>
-                        <dd>{request.accountId}</dd>
-                      </div>
-                      <div>
+                    <dl className="meta-grid">
+                      <div className="details-pair">
                         <dt>Amount</dt>
-                        <dd>{formatAmount(request.amount)}</dd>
+                        <dd>{formatAmount(redeemedVoucher.amount)}</dd>
                       </div>
-                      <div>
-                        <dt>Progress</dt>
-                        <dd>{formatProgress(request)}</dd>
+                      <div className="details-pair">
+                        <dt>Fee</dt>
+                        <dd>{formatAmount(redeemedVoucher.fee)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Total debited</dt>
+                        <dd>{formatAmount(redeemedVoucher.totalDebited)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Created at</dt>
+                        <dd>{formatTimestamp(redeemedVoucher.createdAt)}</dd>
+                      </div>
+                      <div className="details-pair">
+                        <dt>Redeemed at</dt>
+                        <dd>{formatTimestamp(redeemedVoucher.redeemedAt)}</dd>
                       </div>
                     </dl>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleSign(request.id);
-                      }}
-                      disabled={signingDisabled}
+                    {redeemedVoucher.metadata ? (
+                      <div>
+                        <h4>Metadata</h4>
+                        <ul>
+                          {Object.entries(redeemedVoucher.metadata).map(([key, value]) => (
+                            <li key={key}>
+                              <strong>{key}:</strong> {value}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  redeemStatus === 'idle' && (
+                    <EmptyState
+                      title="No voucher redeemed yet"
+                      description="Redeem a voucher code to review settlement details."
+                    />
+                  )
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="section-card" aria-labelledby="issuance-title" id="issuance-section">
+            <header>
+              <h2 id="issuance-title">Create issuance request</h2>
+              <p>Queue a new issuance for validators to approve.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Add an access token"
+                description="Authenticate above before creating issuance requests."
+              />
+            ) : (
+              <form onSubmit={handleCreateRequest} className="form-grid two-column">
+                <label>
+                  Account ID
+                  <input
+                    type="text"
+                    value={accountIdInput}
+                    onChange={(event) => setAccountIdInput(event.target.value)}
+                    placeholder="acct_000001"
+                  />
+                </label>
+                <label>
+                  Amount
+                  <input
+                    type="text"
+                    value={amountInput}
+                    onChange={(event) => setAmountInput(event.target.value)}
+                    placeholder="100.00"
+                  />
+                </label>
+                <label>
+                  Currency
+                  <input
+                    type="text"
+                    value={currencyInput}
+                    onChange={(event) => setCurrencyInput(event.target.value)}
+                    placeholder="QZD"
+                  />
+                </label>
+                <label>
+                  Reference (optional)
+                  <input
+                    type="text"
+                    value={referenceInput}
+                    onChange={(event) => setReferenceInput(event.target.value)}
+                  />
+                </label>
+                <button type="submit" disabled={createStatus === 'pending'}>
+                  {createStatus === 'pending' ? 'Submitting...' : 'Submit issuance request'}
+                </button>
+              </form>
+            )}
+          </section>
+
+          <section className="section-card" aria-labelledby="validator-title" id="validator-section">
+            <header>
+              <h2 id="validator-title">Validator actions</h2>
+              <p>Act as a validator to advance issuance requests to completion.</p>
+            </header>
+            {!isAuthenticated ? (
+              <EmptyState
+                title="Add an access token"
+                description="Authenticate above to view and sign issuance requests."
+              />
+            ) : (
+              <div className="meta-grid">
+                <div className="form-grid two-column">
+                  <label>
+                    Validator identity
+                    <select
+                      value={selectedValidator}
+                      onChange={(event) => setSelectedValidator(event.target.value as ValidatorId)}
                     >
-                      {isSigning ? 'Signing…' : `Sign as ${selectedValidator}`}
-                    </button>
-                  </article>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-    </main>
+                      {KNOWN_VALIDATORS.map((validator) => (
+                        <option key={validator} value={validator}>
+                          {validator}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" onClick={handleRefresh} disabled={loading === 'pending'}>
+                    {loading === 'pending' ? 'Loading...' : 'Refresh queue'}
+                  </button>
+                </div>
+                {loading === 'pending' ? <LoadingIndicator label="Refreshing requests..." /> : null}
+                {requests.length === 0 ? (
+                  <EmptyState
+                    title="No issuance requests"
+                    description="Requests awaiting validator action will appear here."
+                  />
+                ) : (
+                  <ul className="card-list">
+                    {requests.map((request) => {
+                      const isSigning = signingId === request.id;
+                      const signingDisabled = isSigning || request.status === 'completed';
+                      const badgeVariant = request.status === 'completed' ? 'completed' : 'pending';
+                      return (
+                        <li key={request.id} className="card-item">
+                          <header>
+                            <h3>{request.id}</h3>
+                            <span className="badge" data-variant={badgeVariant}>
+                              {request.status}
+                            </span>
+                          </header>
+                          <dl className="meta-grid">
+                            <div className="details-pair">
+                              <dt>Account</dt>
+                              <dd>{request.accountId}</dd>
+                            </div>
+                            <div className="details-pair">
+                              <dt>Amount</dt>
+                              <dd>{formatAmount(request.amount)}</dd>
+                            </div>
+                            <div className="details-pair">
+                              <dt>Progress</dt>
+                              <dd>{formatProgress(request)}</dd>
+                            </div>
+                          </dl>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleSign(request.id);
+                            }}
+                            disabled={signingDisabled}
+                          >
+                            {isSigning ? 'Signing...' : `Sign as ${selectedValidator}`}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+      <footer className="footer">
+        <div className="container">Admin console for operational testing and support workflows.</div>
+      </footer>
+    </div>
   );
 }

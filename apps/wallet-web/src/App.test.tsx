@@ -24,11 +24,12 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: /register \/ log in/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /register/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /load account/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /send transfer/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /preview quote/i })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: /redeem offline voucher/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /account tools/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /send transfer/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /preview quote/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /redeem offline voucher/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: /sign in to send transfers/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: /sign in to preview quotes/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: /sign in to redeem vouchers/i })).toBeInTheDocument();
   });
 });
