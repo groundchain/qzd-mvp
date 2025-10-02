@@ -68,6 +68,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate SDK bindings
+        run: pnpm gen:sdks
       - name: Record stage start
         run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Run contract validation suite
@@ -103,6 +105,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate SDK bindings
+        run: pnpm gen:sdks
       - name: Record stage start
         run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Lint workspaces
@@ -150,6 +154,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate SDK bindings
+        run: pnpm gen:sdks
       - name: Record stage start
         run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Run API e2e suite
@@ -190,6 +196,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
+      - name: Generate SDK bindings
+        run: pnpm gen:sdks
       - name: Record stage start
         run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Run wallet smoke tests
