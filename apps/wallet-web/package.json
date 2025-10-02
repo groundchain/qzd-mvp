@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "lint:a11y": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
