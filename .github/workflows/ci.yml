@@ -111,6 +111,8 @@ jobs:
         run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
       - name: Lint workspaces
         run: pnpm lint
+      - name: Accessibility lint
+        run: pnpm lint:a11y
       - name: Typecheck workspaces
         run: pnpm typecheck
       - name: Build workspaces
@@ -177,11 +179,52 @@ jobs:
             echo "- Duration: ${duration}s"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  ui-a11y:
+    name: Wallet accessibility smoke
+    runs-on: ubuntu-latest
+    needs:
+      - api-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Generate SDK bindings
+        run: pnpm gen:sdks
+      - name: Record stage start
+        run: echo "STAGE_START=$(date +%s)" >> "$GITHUB_ENV"
+      - name: Run wallet accessibility smoke tests
+        env:
+          COVERAGE: 'false'
+        run: pnpm test:wallet:a11y --reporter=list
+      - name: Stage summary
+        if: always()
+        env:
+          STAGE_LABEL: UI accessibility
+        run: |
+          end=$(date +%s)
+          start=${STAGE_START:-$end}
+          duration=$(( end - start ))
+          {
+            echo "## ${STAGE_LABEL}"
+            echo ""
+            echo "- Status: ${{ job.status }}"
+            echo "- Duration: ${duration}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ui-smoke:
     name: Wallet UI smoke
     runs-on: ubuntu-latest
     needs:
-      - api-e2e
+      - ui-a11y
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4

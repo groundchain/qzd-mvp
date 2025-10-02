@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 export default tseslint.config(
   {
@@ -31,11 +32,16 @@ export default tseslint.config(
   },
   {
     files: ["**/*.{ts,tsx,jsx,js}"] ,
+    languageOptions: {
+      ...jsxA11y.flatConfigs?.recommended?.languageOptions
+    },
     plugins: {
+      ...jsxA11y.flatConfigs?.recommended?.plugins,
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh
     },
     rules: {
+      ...jsxA11y.flatConfigs?.recommended?.rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
