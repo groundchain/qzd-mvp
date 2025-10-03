@@ -6,6 +6,7 @@ const sidebar: DefaultTheme.Sidebar = [
     items: [
       { text: 'Introduction', link: '/' },
       { text: 'Architecture', link: '/architecture' },
+      { text: 'Goals & Gap Analysis', link: '/qzd-goals-and-gap-analysis' },
       { text: 'Deployment (Single Server)', link: '/deployment-single-server' },
       { text: 'Operations Runbook', link: '/runbook' },
     ],
