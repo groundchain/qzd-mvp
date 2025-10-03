@@ -17,6 +17,66 @@ async function activateWithEnter(page: Page, locator: Locator) {
   await page.keyboard.press('Enter');
 }
 
+async function recordStatusAnnouncements(page: Page) {
+  await page.addInitScript(() => {
+    const globalWindow = window as typeof window & {
+      __statusAnnouncements?: string[];
+    };
+
+    globalWindow.__statusAnnouncements = [];
+
+    const lastByElement = new WeakMap<Element, string>();
+
+    const capture = () => {
+      const statuses = document.querySelectorAll('[role="status"]');
+      statuses.forEach((element) => {
+        const textContent = element.textContent?.trim();
+        if (!textContent) {
+          lastByElement.delete(element);
+          return;
+        }
+
+        const previous = lastByElement.get(element);
+        if (previous === textContent) {
+          return;
+        }
+
+        lastByElement.set(element, textContent);
+        globalWindow.__statusAnnouncements?.push(textContent);
+      });
+    };
+
+    const observer = new MutationObserver(() => {
+      capture();
+    });
+
+    const startObservation = () => {
+      observer.observe(document, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+      capture();
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startObservation, { once: true });
+    } else {
+      startObservation();
+    }
+  });
+}
+
+async function waitForStatusAnnouncement(page: Page, message: string) {
+  await page.waitForFunction((expected: string) => {
+    const globalWindow = window as typeof window & {
+      __statusAnnouncements?: string[];
+    };
+
+    return Boolean(globalWindow.__statusAnnouncements?.includes(expected));
+  }, message);
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test('wallet acceptance tour is keyboard accessible', async ({ page }) => {
@@ -25,6 +85,7 @@ test('wallet acceptance tour is keyboard accessible', async ({ page }) => {
     registerUser('wallet-tour-recipient'),
   ]);
 
+  await recordStatusAnnouncements(page);
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
@@ -35,6 +96,7 @@ test('wallet acceptance tour is keyboard accessible', async ({ page }) => {
     await clearAndType(loginPanel.getByLabel('Email'), primary.email);
     await clearAndType(loginPanel.getByLabel('Password'), primary.password);
     await activateWithEnter(page, loginPanel.getByRole('button', { name: 'Sign in' }));
+    await waitForStatusAnnouncement(page, 'Logged in successfully.');
     await expect(page.getByRole('status')).toHaveText('Logged in successfully.');
   });
 
@@ -57,9 +119,7 @@ test('wallet acceptance tour is keyboard accessible', async ({ page }) => {
     const submitTransferButton = transferRegion.locator('form button[type="submit"]');
     await activateWithEnter(page, submitTransferButton);
     await expect(submitTransferButton).toBeDisabled();
-    await expect(
-      page.getByRole('status', { name: 'Transfer submitted successfully.' }).first(),
-    ).toBeVisible();
+    await waitForStatusAnnouncement(page, 'Transfer submitted successfully.');
     await expect(submitTransferButton).toBeEnabled();
     await expect(submitTransferButton).toHaveText('Send');
 
