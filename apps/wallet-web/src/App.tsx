@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import {
   AccountsApi,
   AuthApi,
@@ -368,7 +369,9 @@ export default function App() {
         return;
       }
 
-      setTransferStatus('pending');
+      flushSync(() => {
+        setTransferStatus('pending');
+      });
       try {
         await transactionsApi.initiateTransfer({
           idempotencyKey: createIdempotencyKey(),
@@ -416,7 +419,9 @@ export default function App() {
         return;
       }
 
-      setQuoteStatus('pending');
+      flushSync(() => {
+        setQuoteStatus('pending');
+      });
       try {
         const response = await remittancesApi.simulateQuote({ usdAmount: amount, scenario: quoteScenario });
         setQuote(response);
