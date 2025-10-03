@@ -57,11 +57,9 @@ test('wallet acceptance tour is keyboard accessible', async ({ page }) => {
     const submitTransferButton = transferRegion.locator('form button[type="submit"]');
     await activateWithEnter(page, submitTransferButton);
     await expect(submitTransferButton).toBeDisabled();
-    await page.waitForFunction(() =>
-      Array.from(document.querySelectorAll('[role="status"]')).some((element) =>
-        element.textContent?.includes('Transfer submitted successfully.'),
-      ),
-    );
+    await expect(
+      page.getByRole('status', { name: 'Transfer submitted successfully.' }).first(),
+    ).toBeVisible();
     await expect(submitTransferButton).toBeEnabled();
     await expect(submitTransferButton).toHaveText('Send');
 
